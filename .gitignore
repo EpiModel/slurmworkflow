@@ -1,0 +1,11 @@
+library/
+local/
+cellar/
+lock/
+python/
+staging/
+renv/
+.Rproj.user
+inst/doc
+/doc/
+/Meta/

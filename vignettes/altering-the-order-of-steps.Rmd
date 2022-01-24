@@ -1,0 +1,19 @@
+---
+title: "Altering the Order of Steps"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{altering-the-order-of-steps}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(slurmworkflow)
+```

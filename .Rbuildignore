@@ -1,0 +1,10 @@
+^renv$
+^renv\.lock$
+^slurmworkflow\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.Rmd$
+^cran-comments\.md$
+^doc$
+^Meta$
+^\.github$

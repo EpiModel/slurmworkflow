@@ -1,0 +1,19 @@
+---
+title: "making-a-custom-step-template"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{making-a-custom-step-template}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(slurmworkflow)
+```
