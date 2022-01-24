@@ -10,7 +10,7 @@ experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](h
 [![CRAN
 status](https://www.r-pkg.org/badges/version/slurmworkflow)](https://CRAN.R-project.org/package=slurmworkflow)
 [![R-CMD-check](https://github.com/EpiModel/slurmworkflow/workflows/R-CMD-check/badge.svg)](https://github.com/EpiModel/slurmworkflow/actions)
-[![codecov](https://codecov.io/gh/AdrienLeGuillou/slurmworkflow/branch/main/graph/badge.svg?token=LKYC3L0TZ0)](https://codecov.io/gh/EpiModel/slurmworkflow)
+[![codecov](https://codecov.io/gh/EpiModel/slurmworkflow/branch/main/graph/badge.svg?token=eo2r0HeP8Z)](https://codecov.io/gh/EpiModel/slurmworkflow)
 <!-- badges: end -->
 
 **slurmworkflow** allows people working with an slurm equipped HPC to
