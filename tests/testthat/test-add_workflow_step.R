@@ -2,7 +2,7 @@ test_that("`add_workflow_step` produces the right file structure", {
   test_dir <- "workflows"
   withr::local_file(test_dir)
 
-  wf_name <- "test_wf"
+  wf_name <- "test_step_struct"
 
   wf <- create_workflow(
     wf_name = wf_name,

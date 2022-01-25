@@ -2,7 +2,7 @@ test_that("`create_workflow` produces the right file structure", {
   test_dir <- "workflows"
   withr::local_file(test_dir)
 
-  wf_name <- "test_wf"
+  wf_name <- "test_wf_struct"
 
   wf <- create_workflow(
     wf_name = wf_name,
@@ -30,7 +30,7 @@ test_that("`create_workflow` fails if a workflow with the same name already exis
   test_dir <- "workflows"
   withr::local_file(test_dir)
 
-  wf_name <- "test_wf"
+  wf_name <- "test_wf_dupl"
 
   create_workflow(
     wf_name = wf_name,
