@@ -14,6 +14,8 @@ create_wf_dir <- function(wf_summary) {
 
   wf_tmpl_dir <- fs::path(get_templates_dir(), "workflow")
   fs::dir_copy(wf_tmpl_dir, wf_root)
+  start_workflow <- fs::path(wf_root, "start_workflow.sh")
+  fs::file_chmod(start_workflow, "+x")
 
   create_ctrl_script(wf_summary)
   write_wf_summary(wf_summary)
