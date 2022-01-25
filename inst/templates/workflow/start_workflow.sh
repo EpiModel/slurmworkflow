@@ -29,6 +29,9 @@ then
   mkdir -p "$SWF_LOG_DIR"
 fi
 
+# change CRLF ending files to LF
+find "$SWF_ROOT" -type f | xargs file -F "::" | grep CRLF | sed 's/::.*$//' | xargs perl -pi -e 's/\r\n/\n/g'
+
 sbatch  --output="$SWF__CTRL_OUT" \
         --job-name="$SWF__CTRL_NAME" \
         "$SWF__CTRL_SCRIPT" "$FIRST_STEP"
