@@ -52,19 +52,19 @@ step_tmpl_bash_script <- function(bash_script) {
 #' Step template to run an R script
 #'
 #' @param r_script The R script to be run by the workflow step
-#' @param setup_script (optional) a bash script to be run first.
+#' @param setup_lines (optional) a vector of bash lines to be run first.
 #'   This can be used to load the required modules (like R, python, etc).
 #'
 #' @inherit step_tmpl_bash_lines return
 #' @inheritSection step_tmpl_bash_lines Step Template
 #' @export
-step_tmpl_rscript <- function(r_script, setup_script = NULL) {
+step_tmpl_rscript <- function(r_script, setup_lines = NULL) {
   function(instructions_script, wf_vars, ...) {
     step_dir <- wf_vars[["SWF__CUR_DIR"]]
     r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
 
     instructions <- paste0("Rscript \"", r_script, "\"")
-    instructions <- helper_use_setup_script(instructions, setup_script)
+    instructions <- helper_use_setup_lines(instructions, setup_lines)
 
     helper_write_instructions(instructions, instructions_script)
     list()
@@ -72,9 +72,9 @@ step_tmpl_rscript <- function(r_script, setup_script = NULL) {
 }
 
 #' @noRd
-helper_use_setup_script <- function(instructions, setup_script) {
-  if (!is.null(setup_script))
-    instructions <- c(readLines(setup_script), instructions)
+helper_use_setup_lines <- function(instructions, setup_lines) {
+  if (!is.null(setup_lines))
+    instructions <- c(setup_lines, instructions)
 }
 
 #' Step template to update a project `renv`
@@ -87,9 +87,9 @@ helper_use_setup_script <- function(instructions, setup_script) {
 #' @inherit step_tmpl_bash_lines return
 #' @inheritSection step_tmpl_bash_lines Step Template
 #' @export
-step_tmpl_renv_restore <- function(setup_script = NULL) {
+step_tmpl_renv_restore <- function(setup_lines = NULL) {
   instructions <- c("git pull", "Rscript -e \"renv::restore()\"")
-  instructions <- helper_use_setup_script(instructions, setup_script)
+  instructions <- helper_use_setup_lines(instructions, setup_lines)
 
   step_tmpl_bash_lines(instructions)
 }
@@ -109,7 +109,7 @@ step_tmpl_renv_restore <- function(setup_script = NULL) {
 #' @inherit step_tmpl_rscript return
 #' @inheritSection step_tmpl_bash_lines Step Template
 #' @export
-step_tmpl_do_call <- function(what, args, setup_script = NULL) {
+step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
 
   do_call_data <- list(what = what, args = args)
 
@@ -119,7 +119,7 @@ step_tmpl_do_call <- function(what, args, setup_script = NULL) {
     r_script <- fs::path(get_templates_dir(), "step_tmpl_do_call.R")
     r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
     instructions <- paste0("Rscript \"", r_script, "\"")
-    instructions <- helper_use_setup_script(instructions, setup_script)
+    instructions <- helper_use_setup_lines(instructions, setup_lines)
 
     saveRDS(do_call_data, fs::path(step_dir, "do_call.rds"))
 
@@ -148,7 +148,7 @@ step_tmpl_do_call <- function(what, args, setup_script = NULL) {
 #' @inherit step_tmpl_rscript return
 #' @inheritSection step_tmpl_bash_lines Step Template
 #' @export
-step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_script = NULL,
+step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
                           max_array_size = Inf) {
   dots <- list(...)
   n_iter <- unique(vapply(dots, length, 0))
@@ -167,7 +167,7 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_script = NULL,
     r_script <- fs::path(get_templates_dir(), "step_tmpl_map.R")
     r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
     instructions <- paste0("Rscript \"", r_script, "\"")
-    instructions <- helper_use_setup_script(instructions, setup_script)
+    instructions <- helper_use_setup_lines(instructions, setup_lines)
 
     saveRDS(map_data, fs::path(step_dir, "map.rds"))
 
@@ -184,12 +184,12 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_script = NULL,
 #' @inheritSection step_tmpl_bash_lines Step Template
 #' @export
 step_tmpl_do_call_script <- function(r_script, args = list(),
-                                     setup_script = NULL) {
+                                     setup_lines = NULL) {
   f <- function(with_args)  with(with_args, source(r_script, local = TRUE))
   step_tmpl_do_call(
     what = f,
     args = list(with_args = args),
-    setup_script = setup_script
+    setup_lines = setup_lines
   )
 }
 
@@ -201,7 +201,7 @@ step_tmpl_do_call_script <- function(r_script, args = list(),
 #' @inheritSection step_tmpl_bash_lines Step Template
 #' @export
 step_tmpl_map_script <- function(r_script, ..., MoreArgs = NULL,
-                                 setup_script = NULL) {
+                                 setup_lines = NULL) {
   f <- function(...)  with(list(...), source(r_script, local = TRUE))
-  step_tmpl_map(FUN = f, ..., MoreArgs = MoreArgs, setup_script = setup_script)
+  step_tmpl_map(FUN = f, ..., MoreArgs = MoreArgs, setup_lines = setup_lines)
 }
