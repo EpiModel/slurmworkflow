@@ -4,10 +4,10 @@
 \alias{step_tmpl_renv_restore}
 \title{Step template to update a project \code{renv}}
 \usage{
-step_tmpl_renv_restore(setup_script = NULL)
+step_tmpl_renv_restore(setup_lines = NULL)
 }
 \arguments{
-\item{setup_script}{(optional) a bash script to be run first.
+\item{setup_lines}{(optional) a vector of bash lines to be run first.
 This can be used to load the required modules (like R, python, etc).}
 }
 \value{

@@ -8,7 +8,7 @@ step_tmpl_map(
   FUN,
   ...,
   MoreArgs = NULL,
-  setup_script = NULL,
+  setup_lines = NULL,
   max_array_size = Inf
 )
 }
@@ -21,7 +21,7 @@ positive length, or all of zero length).  See also ‘Details’.}
 \item{MoreArgs}{a \emph{list} of arguments to the function call. The \code{names}
 attribute of \code{args} gives the argument names.}
 
-\item{setup_script}{(optional) a bash script to be run first.
+\item{setup_lines}{(optional) a vector of bash lines to be run first.
 This can be used to load the required modules (like R, python, etc).}
 
 \item{max_array_size}{maximum number of array jobs to be submitted at the

@@ -4,12 +4,12 @@
 \alias{step_tmpl_rscript}
 \title{Step template to run an R script}
 \usage{
-step_tmpl_rscript(r_script, setup_script = NULL)
+step_tmpl_rscript(r_script, setup_lines = NULL)
 }
 \arguments{
 \item{r_script}{The R script to be run by the workflow step}
 
-\item{setup_script}{(optional) a bash script to be run first.
+\item{setup_lines}{(optional) a vector of bash lines to be run first.
 This can be used to load the required modules (like R, python, etc).}
 }
 \value{

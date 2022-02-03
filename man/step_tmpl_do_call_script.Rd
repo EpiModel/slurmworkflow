@@ -4,7 +4,7 @@
 \alias{step_tmpl_do_call_script}
 \title{Step template to run an R script with a set of arguments}
 \usage{
-step_tmpl_do_call_script(r_script, args = list(), setup_script = NULL)
+step_tmpl_do_call_script(r_script, args = list(), setup_lines = NULL)
 }
 \arguments{
 \item{r_script}{The R script to be run by the workflow step}
@@ -12,7 +12,7 @@ step_tmpl_do_call_script(r_script, args = list(), setup_script = NULL)
 \item{args}{a \emph{list} of arguments to the function call. The \code{names}
 attribute of \code{args} gives the argument names.}
 
-\item{setup_script}{(optional) a bash script to be run first.
+\item{setup_lines}{(optional) a vector of bash lines to be run first.
 This can be used to load the required modules (like R, python, etc).}
 }
 \value{
