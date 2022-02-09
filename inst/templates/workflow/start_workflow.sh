@@ -29,9 +29,9 @@ then
   mkdir -p "$SWF_LOG_DIR"
 fi
 
-# change CRLF ending files to LF
-CRLF_FILES=$(find "$SWF_ROOT" -type f | xargs file -F "::" | grep CRLF)
-if [[ -n "CRLF_FILES" ]]
+# CRLF to LF - `|| echo ""` prevents error when none is found
+CRLF_FILES=$(find "$SWF_ROOT" -type f | xargs file -F "::" | grep CRLF || echo "")
+if [[ -n "$CRLF_FILES" ]]
 then
   echo "$CRLF_FILES" | sed 's/::.*$//' | xargs perl -pi -e 's/\r\n/\n/g'
 fi
