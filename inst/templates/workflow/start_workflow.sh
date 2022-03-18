@@ -3,6 +3,17 @@
 # see https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
 set -e
 
+# Throw an informative error if the script is sourced instead of executed
+(return 0 2>/dev/null) && SOURCED=1 || SOURCED=0
+if [[ "$SOURCED" == "1" ]]
+then
+    echo "This file must be executed and not sourced." 1>&2
+    echo 'Replace `source <path to file>`' 1>&2
+    echo 'with    `<path to file>`' 1>&2
+    echo "Exiting" 1>&2
+    return 1
+fi
+
 # without argument the job submits the first step
 FIRST_STEP=${1:-1}
 
