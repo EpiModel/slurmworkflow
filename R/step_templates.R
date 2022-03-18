@@ -77,23 +77,6 @@ helper_use_setup_lines <- function(instructions, setup_lines) {
     instructions <- c(setup_lines, instructions)
 }
 
-#' Step template to update a project `renv`
-#'
-#' This template makes the step run `git pull` and `renv::restore()`. This could
-#' help ensure that the project is up to date when running the rest of the
-#' workflow.
-#'
-#' @inheritParams step_tmpl_rscript
-#' @inherit step_tmpl_bash_lines return
-#' @inheritSection step_tmpl_bash_lines Step Template
-#' @export
-step_tmpl_renv_restore <- function(setup_lines = NULL) {
-  instructions <- c("git pull", "Rscript -e \"renv::restore()\"")
-  instructions <- helper_use_setup_lines(instructions, setup_lines)
-
-  step_tmpl_bash_lines(instructions)
-}
-
 #' Step template to run an R function
 #'
 #' This step template uses a syntax similar to the `base::do.call` function to
