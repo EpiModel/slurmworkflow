@@ -76,10 +76,19 @@ step_tmpl_rscript <- function(r_script, setup_lines = NULL) {
   }
 }
 
-#' @noRd
+#' Helper function to consistently write setup lines
+#'
+#' @param instructions Vector of bash lines to be run by the workflow step
+#' @param setup_lines Vector of bash lines to be run before the rest of the
+#'   step instructions.
+#'
+#'  @return The modified instructions
+#'
+#' @export
 helper_use_setup_lines <- function(instructions, setup_lines) {
   if (!is.null(setup_lines))
     instructions <- c(setup_lines, instructions)
+  instructions
 }
 
 #' Step template to run an R function
