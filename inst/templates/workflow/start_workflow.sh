@@ -11,7 +11,7 @@ then
     echo 'Replace `source <path to file>`' 1>&2
     echo 'with    `<path to file>`' 1>&2
     echo "Exiting" 1>&2
-    return 1
+    return 0
 fi
 
 # without argument the job submits the first step
