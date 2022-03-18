@@ -32,7 +32,12 @@ step_tmpl_bash_lines <- function(bash_lines) {
   }
 }
 
-#' @noRd
+#' Helper function to consistently write instructions to the instruction script
+#'
+#' @param instructions Vector of bash lines to be run by the workflow step
+#' @param instructions_script Path to the instructions script
+#'
+#' @export
 helper_write_instructions <- function(instructions, instructions_script) {
   writeLines(instructions, instructions_script, sep = "\n")
 }
