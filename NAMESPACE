@@ -3,6 +3,7 @@
 export(add_workflow_step)
 export(change_next_workflow_step)
 export(create_workflow)
+export(get_current_workflow_step)
 export(get_workflow_root)
 export(helper_use_setup_lines)
 export(helper_write_instructions)

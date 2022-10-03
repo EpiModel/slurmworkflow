@@ -17,7 +17,7 @@ if (swf__array_id == swf__array_max) {
     sbatch_opts <- list("array" = paste0(next_slice_beg, "-", next_slice_end))
 
     slurmworkflow::change_next_workflow_step(
-      next_step = Sys.getenv("SWF_CUR"),
+      next_step = get_current_workflow_step(),
       sbatch_opts = sbatch_opts
     )
 
