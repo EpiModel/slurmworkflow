@@ -201,6 +201,7 @@ change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
   }
 
   writeLines(as.character(next_step), next_step_file)
+  message("The next workflow step was changed to ", next_step)
   invisible(next_step)
 }
 
@@ -210,5 +211,5 @@ change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
 #'
 #' @export
 get_current_workflow_step <- function() {
-  Sys.getenv("SWF_CUR")
+  as.numeric(Sys.getenv("SWF_CUR"))
 }
