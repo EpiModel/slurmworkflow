@@ -12,7 +12,10 @@ if (array_id == array_max) {
   length_map <- max(vapply(swf__tmpl_elts[["dots"]], length, 0))
   # Start the next array slice if not finished
   if (corrected_id < length_map) {
-    next_slice_end <- min(length_map - corrected_id, swf__tmpl_elts[["array_size"]])
+    next_slice_end <- min(
+      length_map - corrected_id - 1,
+      swf__tmpl_elts[["array_size"]]
+    )
     sbatch_opts <- list(
       "array" = paste0("0-", next_slice_end),
       "export" = paste0("ALL,SWF__ARRAY_OFFSET=", corrected_id + 1)
