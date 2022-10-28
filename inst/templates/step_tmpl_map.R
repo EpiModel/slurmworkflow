@@ -18,7 +18,7 @@ if (array_id == array_max) {
       "export" = paste0("ALL,SWF__ARRAY_OFFSET=", corrected_id + 1)
     )
     slurmworkflow::change_next_workflow_step(
-      next_step = get_current_workflow_step(),
+      next_step = slurmworkflow::get_current_workflow_step(),
       sbatch_opts = sbatch_opts
     )
     rm(length_map, next_slice_end, sbatch_opts)
