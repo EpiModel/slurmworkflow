@@ -61,3 +61,5 @@ then
            "$SWF__CTRL_SCRIPT" "$SWF__NEXTSTEP" "$SWF__NEXTSTEP_OPTS"
 fi
 
+Af = alsk
+

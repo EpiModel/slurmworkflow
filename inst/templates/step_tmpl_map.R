@@ -2,39 +2,40 @@ step_dir <- Sys.getenv("SWF__CUR_DIR")
 swf__tmpl_elts <- readRDS(fs::path(step_dir, "map.rds"))
 rm(step_dir)
 
-swf__array_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-swf__array_max <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_MAX"))
+array_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+array_max <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_MAX"))
+array_offset <- as.numeric(Sys.getenv("SWF__ARRAY_OFFSET"))
+corrected_id <- array_id + array_offset
 
-if (swf__array_id == swf__array_max) {
+# On the last array element
+if (array_id == array_max) {
   length_map <- max(vapply(swf__tmpl_elts[["dots"]], length, 0))
-  if (swf__array_id < length_map) {
-    next_slice_beg <- swf__array_id + 1
-    next_slice_end <- min(
-      swf__array_id + swf__tmpl_elts[["array_size"]],
-      length_map
+  # Start the next array slice if not finished
+  if (corrected_id < length_map) {
+    next_slice_end <- min(length_map - corrected_id, swf__tmpl_elts[["array_size"]])
+    sbatch_opts <- list(
+      "array" = paste0("0-", next_slice_end),
+      "export" = paste0("ALL,SWF__ARRAY_OFFSET=", corrected_id + 1)
     )
-
-    sbatch_opts <- list("array" = paste0(next_slice_beg, "-", next_slice_end))
-
     slurmworkflow::change_next_workflow_step(
       next_step = get_current_workflow_step(),
       sbatch_opts = sbatch_opts
     )
-
-    rm(next_slice_beg, next_slice_end, swf__array_max, sbatch_opts)
+    rm(length_map, next_slice_end, sbatch_opts)
   }
 }
 
+# Create the
 swf__tmpl_elts[["args"]] <- c(
-  lapply(swf__tmpl_elts[["dots"]], function(x) x[[swf__array_id]]),
+  lapply(swf__tmpl_elts[["dots"]], function(x) x[[corrected_id]]),
   swf__tmpl_elts[["MoreArgs"]]
 )
-
+# Cleanup
+rm(array_id, array_max, array_offset, corrected_id)
 swf__tmpl_elts[["dots"]] <- NULL
 swf__tmpl_elts[["MoreArgs"]] <- NULL
-rm(swf__array_id)
 gc()
-
+# The actual function call
 do.call(
   what = swf__tmpl_elts[["FUN"]],
   args = swf__tmpl_elts[["args"]]

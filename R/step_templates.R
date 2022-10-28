@@ -151,7 +151,7 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
   n_iter <- unique(vapply(dots, length, 0))
   if (length(n_iter) > 1)
     stop("All the vectors in `...` must be of the same length")
-  array_size <- min(max_array_size, n_iter)
+  array_size <- min(max_array_size, n_iter) - 1
 
   map_data <- list(
     FUN = FUN, dots = dots, MoreArgs = MoreArgs,
@@ -169,7 +169,10 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
     saveRDS(map_data, fs::path(step_dir, "map.rds"))
 
     helper_write_instructions(instructions, instructions_script)
-    list("array" = paste0("1-", array_size))
+    list(
+      "array" = paste0("0-", array_size),
+      "export" = "ALL,SWF__ARRAY_OFFSET=1"
+    )
   }
 }
 
