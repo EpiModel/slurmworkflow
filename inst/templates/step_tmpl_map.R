@@ -1,8 +1,11 @@
 # Time Calulation --------------------------------------------------------------
-cat("Workflow step starting at:\n")
 swf__start_time <- Sys.time()
-cat(swf__start_time)
-cat("\n          ##########          \n")
+message(
+  "\n###################\n",
+  "Workflow step starting at:\n",
+  format(swf__start_time) ,
+  "\n###################\n"
+)
 
 # Step Template ----------------------------------------------------------------
 step_dir <- Sys.getenv("SWF__CUR_DIR")
@@ -52,7 +55,9 @@ do.call(
 )
 
 # Time Calulation --------------------------------------------------------------
-cat("\n          ##########          \n")
-cat("Workflow ran for:\n")
-cat(Sys.time() - swf__start_time)
-cat("\n")
+message(
+  "\n###################\n",
+  "Workflow ran for:\n",
+  format(Sys.time() - swf__start_time),
+  "\n###################\n"
+)
