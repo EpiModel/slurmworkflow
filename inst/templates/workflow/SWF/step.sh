@@ -58,5 +58,8 @@ then
     sbatch --dependency=afterany:"$SWF__JOB_ID" \
            --output="$SWF__CTRL_OUT" \
            --job-name="$SWF__CTRL_NAME" \
-           "$SWF__CTRL_SCRIPT" "$SWF__NEXTSTEP" "$SWF__NEXTSTEP_OPTS"
+           "$SWF__CTRL_SCRIPT" \
+           "$SWF_ROOT" \
+           "$SWF__NEXTSTEP" \
+           "$SWF__NEXTSTEP_OPTS"
 fi

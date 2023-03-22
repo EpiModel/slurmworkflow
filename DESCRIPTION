@@ -14,7 +14,7 @@ Description: slurmworkflow makes it possible to locally pre-define a set of jobs
     like behavior.
 License: MIT + file LICENSE
 Depends:
-  R (>= 3.1.0)
+  R (>= 4.1.0)
 Imports:
     fs,
     yaml
