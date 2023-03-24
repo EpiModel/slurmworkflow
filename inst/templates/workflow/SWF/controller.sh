@@ -14,7 +14,6 @@
 # see https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
 set -e
 
-# TODO: pass SWF_ROOT as first arg and build vars from lib.sh
 SWF_ROOT="$1"
 SWF_CUR="$2"     # number of the current step
 SWF__NEXTSTEP_OPTS="$3" # optional args to SBATCH
@@ -24,6 +23,7 @@ source "$SWF_ROOT/SWF/lib.sh"
 make_env_vars "$SWF_ROOT"
 make_env_cur_vars "$SWF_CUR"
 
+# Run the next sbatch job
 if [[ -f "$SWF__JOB_SCRIPT" ]]
 then
     sbatch --dependency=afterany:"$SLURM_JOB_ID" \

@@ -1,5 +1,6 @@
-# Ensure the existence of the required variables
+# Export a var pointing to the `tmp` folder for the job
 export SWF_CUR_TMP=${SLURM_TMPDIR:-${TMP:-"/tmp"}}
+# Common job id var
 SWF__JOB_ID=${SLURM_JOB_ID:-$SLURM_ARRAY_JOB_ID}
 
 # SWF_NEXTSTEP_FILE is where the job can require a specific step to be run after
@@ -20,8 +21,9 @@ source "$SWF__INSTRUCTIONS_SCRIPT"
 # "controller" script again
 if [[ -z $SLURM_ARRAY_TASK_ID || $SLURM_ARRAY_TASK_ID = $SLURM_ARRAY_TASK_MAX ]]
 then
-    # check if the file `SWF_NEXTSTEP_FILE` exits. If so, get the value it
-    # contains and remove it.
+    # check if the file `SWF_NEXTSTEP_FILE` exits.
+    # If so, get the value it contains and delete the file.
+    # Otherwise, SWF__NEXTSTEP is SWF_CUR + 1
     if [[ -f "$SWF_NEXTSTEP_FILE" ]]
     then
         SWF__NEXTSTEP=$(cat "$SWF_NEXTSTEP_FILE")
@@ -36,6 +38,8 @@ then
             exit 1
         fi
 
+        # Get the additional options for the next steps if any.
+        # They are stored in the `SWF_NEXTSTEP_OPTS_FILE` file.
         if [[ -f "$SWF_NEXTSTEP_OPTS_FILE" ]]
         then
             SWF__NEXTSTEP_OPTS=$(cat "$SWF_NEXTSTEP_OPTS_FILE")
@@ -45,14 +49,6 @@ then
     else
         SWF__NEXTSTEP=$(($SWF_CUR + 1))
     fi
-
-    # Unset variables specific to this job before submitting the next
-    export SWF_CUR=
-    export SWF_CUR_TMP=
-    export SWF_NEXTSTEP_FILE=
-
-    export SWF__CUR_DIR=
-    export SWF__INSTRUCTIONS_SCRIPT=
 
     # Submit the controller again
     sbatch --dependency=afterany:"$SWF__JOB_ID" \
