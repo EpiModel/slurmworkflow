@@ -10,6 +10,7 @@
 set -e
 
 SWF_ROOT="$1"
+SWF_CUR="$2"
 source "$SWF_ROOT/SWF/lib.sh"
 make_env_vars "$SWF_ROOT"
 make_env_cur_vars "$SWF_CUR"

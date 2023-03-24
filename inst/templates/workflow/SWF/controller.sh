@@ -31,6 +31,7 @@ then
            --job-name="${SWF_NAME}_step${SWF_CUR}" \
            ${SWF__NEXTSTEP_OPTS} \
            "$SWF__JOB_SCRIPT" \
+           "$SWF_ROOT" \
            "$SWF_CUR"
 
     echo "Step number $SWF_CUR has been submitted"
