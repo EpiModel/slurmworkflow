@@ -34,6 +34,6 @@ fix_crlf_files "$SWF_ROOT"
 # Submit the controller with 2 arguments: the root folder and next step
 sbatch  --output="$SWF__CTRL_OUT" \
         --job-name="$SWF__CTRL_NAME" \
-        "$SWF__CTRL_SCRIPT"
+        "$SWF__CTRL_SCRIPT" \
         "$SWF_ROOT" \
         "$FIRST_STEP"
