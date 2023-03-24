@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=500
-#SBATCH --export=ALL
+#SBATCH --export=NONE
 
 ###SBATCH_OPTIONS###
 
