@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils.R
 \name{simple_brew}
 \alias{simple_brew}
-\title{Replace a line in a file with new lines}
+\title{Replace a Line in a File With New Lines}
 \usage{
 simple_brew(file_in, placeholder_line, replacement_lines, file_out = NULL)
 }
@@ -13,7 +13,7 @@ simple_brew(file_in, placeholder_line, replacement_lines, file_out = NULL)
 
 \item{replacement_lines}{a character vector of lines to insert into the file}
 
-\item{file_out}{path to the new file}
+\item{file_out}{path to the new file (default to "file_in" if missing)}
 }
 \value{
 path to the output file (invisibly)

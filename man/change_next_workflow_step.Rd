@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{change_next_workflow_step}
 \alias{change_next_workflow_step}
-\title{Alter the next step of a running workflow}
+\title{Alter the Next Step of a Running Workflow}
 \usage{
 change_next_workflow_step(next_step, sbatch_opts = NULL)
 }
@@ -11,7 +11,7 @@ change_next_workflow_step(next_step, sbatch_opts = NULL)
 workflow system which step to run next}
 
 \item{sbatch_opts}{an optional named list of sbatch parameters that would
-override the ones specified by the \emph{nextstep} for the next iteration}
+override the ones specified by the \code{next_step} for the next iteration}
 }
 \value{
 The \code{next_step} value (invisibly)

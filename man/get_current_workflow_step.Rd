@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{get_current_workflow_step}
 \alias{get_current_workflow_step}
-\title{Get the number of the currently running step of a workflow}
+\title{Get the Number of the Currently Running Step of a Workflow}
 \usage{
 get_current_workflow_step()
 }
@@ -10,5 +10,5 @@ get_current_workflow_step()
 The \code{current_step} value
 }
 \description{
-Get the number of the currently running step of a workflow
+Get the Number of the Currently Running Step of a Workflow
 }

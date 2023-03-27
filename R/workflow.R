@@ -1,10 +1,10 @@
-#' Create a new workflow
+#' Create a New Workflow
 #'
 #' Create a new workflow, set up it's directory and return its summary object
 #'
 #' @param wf_name Name of the new workflow
 #' @param default_sbatch_opts A named list of default sbatch options for the
-#'   workflow. The "account" and "partition" options are mandatory.
+#'   workflow. The "partition" options is mandatory.
 #'   (see the SBATCH Options section for details).
 #' @param wf_common_dir Path to the directory where to store the workflows
 #'   (default = "workflows").
@@ -38,16 +38,14 @@
 create_workflow <- function(wf_name, default_sbatch_opts,
                             wf_common_dir = "workflows") {
   sbatch_opts <- validate_sbatch_opts(default_sbatch_opts)
-  wf_summary <- new_wf_summary(fs::path(wf_common_dir, wf_name), sbatch_opts)
-
+  wf_summary <- new_summary(fs::path(wf_common_dir, wf_name), sbatch_opts)
   create_wf_dir(wf_summary)
-
   wf_summary
 }
 
-#' Add a step to an existing workflow
+#' Add a Step to an Existing Workflow
 #'
-#' @param wf_summary The workflow summary
+#' @param wf_summary The workflow summary object
 #' @param step_tmpl A step template function, see the Step Template section for
 #'   details.
 #' @param sbatch_opts A named list of sbatch options to overwrite or complement
@@ -90,13 +88,11 @@ add_workflow_step <- function(wf_summary, step_tmpl,
     sbatch_opts
   )
   wf_summary <- add_summary_step(wf_summary, sbatch_opts, step_name)
-
   create_step_dir(wf_summary, step_tmpl)
-
   wf_summary
 }
 
-#' Load a workflow summary from a workflow folder or the environment
+#' Load a Workflow Summary From a Workflow Folder or the Environment
 #'
 #' @param wf_root Path to a workflow directory. If not provided, the function
 #'   assumes that the workflow is running on an HPC and pulls the value using
@@ -106,13 +102,12 @@ add_workflow_step <- function(wf_summary, step_tmpl,
 #'
 #' @export
 load_workflow <- function(wf_root = NULL) {
-  if (is.null(wf_root))
-    wf_root <- Sys.getenv("SWF_ROOT")
+  wf_root <- if (is.null(wf_root)) Sys.getenv("SWF_ROOT") else wf_root
   wf_summary_path <- fs::path(wf_root, "workflow.yaml")
-  read_wf_summary(wf_summary_path)
+  read_summary(wf_summary_path)
 }
 
-#' Get the root directory of a workflow
+#' Get the Root Directory of a Workflow
 #'
 #' This function will get the path to the root directory of a workflow. Either
 #' a local workflow or during the execution of a workflow on an HPC
@@ -131,7 +126,7 @@ get_workflow_root <- function(wf_summary = NULL) {
     if (wf_root == "") {
       stop(
         "The environment variable 'SWF_ROOT' is empty.\n",
-        "Make sure you are in running workflow"
+        "Make sure a workflow is currently running."
       )
     }
   } else {
@@ -140,7 +135,7 @@ get_workflow_root <- function(wf_summary = NULL) {
   wf_root
 }
 
-#' Alter the next step of a running workflow
+#' Alter the Next Step of a Running Workflow
 #'
 #' This function allows a running job to alter the workflow sequence by choosing
 #' which step to run after the current one. (See
@@ -150,7 +145,7 @@ get_workflow_root <- function(wf_summary = NULL) {
 #'   workflow system which step to run next
 #'
 #' @param sbatch_opts an optional named list of sbatch parameters that would
-#' override the ones specified by the *nextstep* for the next iteration
+#' override the ones specified by the `next_step` for the next iteration
 #'
 #' @return The `next_step` value (invisibly)
 #'
@@ -167,7 +162,7 @@ get_workflow_root <- function(wf_summary = NULL) {
 change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
   next_step_file <- Sys.getenv("SWF_NEXTSTEP_FILE")
   if (next_step_file == "") {
-    warning(
+    stop(
       "The environment variable 'SWF_NEXTSTEP_FILE' is empty.\n",
       "Make sure you are in running workflow"
     )
@@ -183,7 +178,7 @@ change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
 
   next_step <- as.integer(next_step)
   if (is.na(next_step) || length(next_step) != 1) {
-    stop("`nextstep` must be an integer of length 1")
+    stop("`next_step` must be an integer of length 1")
   }
 
   # Next step new options
@@ -192,7 +187,7 @@ change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
     if (fs::file_exists(next_step_opts_file)) {
       warning(
         "The nextstep options file already exists.\n",
-        "Deleting it and writting the new value: ", next_step
+        "Deleting it and writting the new values: \n ", sbatch_opts
       )
       fs::file_delete(next_step_opts_file)
     }
@@ -205,7 +200,7 @@ change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
   invisible(next_step)
 }
 
-#' Get the number of the currently running step of a workflow
+#' Get the Number of the Currently Running Step of a Workflow
 #'
 #' @return The `current_step` value
 #'

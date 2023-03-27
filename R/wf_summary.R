@@ -3,7 +3,7 @@
 
 #' @keywords internal
 #' @noRd
-new_wf_summary <- function(wf_root, sbatch_opts) {
+new_summary <- function(wf_root, sbatch_opts) {
   list(
     name = fs::path_file(wf_root),
     root = wf_root,
@@ -28,7 +28,7 @@ add_summary_step <- function(wf_summary, sbatch_opts, step_name) {
 
 #' @keywords internal
 #' @noRd
-write_wf_summary <- function(wf_summary) {
+write_summary <- function(wf_summary) {
   wf_summary_orig <- wf_summary
   wf_summary_path <- fs::path(wf_summary[["root"]], "workflow.yaml")
   wf_summary[["root"]] <- NULL
@@ -38,7 +38,7 @@ write_wf_summary <- function(wf_summary) {
 
 #' @keywords internal
 #' @noRd
-read_wf_summary <- function(wf_summary_path) {
+read_summary <- function(wf_summary_path) {
   wf_summary <- yaml::read_yaml(wf_summary_path)
   wf_summary[["root"]] <- fs::path_dir(wf_summary_path)
   wf_summary

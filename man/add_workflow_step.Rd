@@ -2,12 +2,12 @@
 % Please edit documentation in R/workflow.R
 \name{add_workflow_step}
 \alias{add_workflow_step}
-\title{Add a step to an existing workflow}
+\title{Add a Step to an Existing Workflow}
 \usage{
 add_workflow_step(wf_summary, step_tmpl, sbatch_opts = NULL, step_name = NULL)
 }
 \arguments{
-\item{wf_summary}{The workflow summary}
+\item{wf_summary}{The workflow summary object}
 
 \item{step_tmpl}{A step template function, see the Step Template section for
 details.}
@@ -22,7 +22,7 @@ details).}
 The updated workflow summary
 }
 \description{
-Add a step to an existing workflow
+Add a Step to an Existing Workflow
 }
 \section{Step Template}{
 

@@ -1,16 +1,15 @@
-# This file defines a set of
-# in the step tmpl functions:
+# This file defines a set of step tmplate functions:
 # req args: instructions_script, ...
 # optional: wf_summary, wf_vars, sbatch_opts
 #
 # A template returns a list of `sbatch_opts` to change the ones set by the user.
-# This allows the `map` template to work for instance
+# This allows the `map` template to work
 #
-# tmpl main role is to write the instructions into `instructions_script`. If
-# other things are necessary, they should be added into the step folder
+# A template main role is to write the instructions into `instructions_script`.
+# If other things are necessary, they should be added into the step folder
 # `wf_vars[["SWF__CUR_DIR"]]`
 
-#' Step template to run bash statements
+#' Step Template to Run Bash Statements
 #'
 #' @param bash_lines Vector of bash lines to be run by the workflow step
 #'
@@ -32,7 +31,7 @@ step_tmpl_bash_lines <- function(bash_lines) {
   }
 }
 
-#' Helper function to consistently write instructions to the instruction script
+#' Helper Function to Consistently Write Instructions to the Instruction Script
 #'
 #' @param instructions Vector of bash lines to be run by the workflow step
 #' @param instructions_script Path to the instructions script
@@ -42,7 +41,7 @@ helper_write_instructions <- function(instructions, instructions_script) {
   writeLines(instructions, instructions_script, sep = "\n")
 }
 
-#' Step template to run a bash script
+#' Step Template to Run a Bash Script
 #'
 #' @param bash_script Path to the script to be run by the workflow step
 #'
@@ -54,7 +53,7 @@ step_tmpl_bash_script <- function(bash_script) {
   step_tmpl_bash_lines(readLines(bash_script))
 }
 
-#' Step template to run an R script
+#' Step Template to Run an R Script
 #'
 #' @param r_script The R script to be run by the workflow step
 #' @param setup_lines (optional) a vector of bash lines to be run first.
@@ -67,16 +66,14 @@ step_tmpl_rscript <- function(r_script, setup_lines = NULL) {
   function(instructions_script, wf_vars, ...) {
     step_dir <- wf_vars[["SWF__CUR_DIR"]]
     r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
-
     instructions <- paste0("Rscript \"", r_script, "\"")
     instructions <- helper_use_setup_lines(instructions, setup_lines)
-
     helper_write_instructions(instructions, instructions_script)
     list()
   }
 }
 
-#' Helper function to consistently write setup lines
+#' Helper Function to Consistently Write Setup Lines
 #'
 #' @param instructions Vector of bash lines to be run by the workflow step
 #' @param setup_lines Vector of bash lines to be run before the rest of the
@@ -91,7 +88,7 @@ helper_use_setup_lines <- function(instructions, setup_lines) {
   instructions
 }
 
-#' Step template to run an R function
+#' Step Template to Run an R Function
 #'
 #' This step template uses a syntax similar to the `base::do.call` function to
 #' run a function as a workflow step. You must make sure that all variables
@@ -125,7 +122,7 @@ step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
   }
 }
 
-#' Step template to run an R function with a set of arguments
+#' Step Template to Run an R Function With a Set of Arguments
 #'
 #' This step template uses a syntax similar to the `base::Map` / `base::mapply`
 #' functions to run a function with a given set of arguments as a workflow step.
@@ -135,7 +132,7 @@ step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
 #' @param FUN The R function to be run by the workflow step
 #' @param ... arguments to vectorize over (vectors or lists of strictly
 #'   positive length, or all of zero length).  See also ‘Details’.
-#' @param MoreArgs a *list* of arguments to the function call. The `names`
+#' @param MoreArgs a `list` of arguments to the function call. The *names*
 #'   attribute of `args` gives the argument names.
 #' @param max_array_size maximum number of array jobs to be submitted at the
 #'   same time. Should be strictly less than the maximum number of jobs you are
@@ -176,7 +173,7 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
   }
 }
 
-#' Step template to run an R script with a set of arguments
+#' Step Template to Run an R Script With a Set of Arguments
 #'
 #' @inheritParams step_tmpl_rscript
 #' @inheritParams step_tmpl_do_call
@@ -193,7 +190,7 @@ step_tmpl_do_call_script <- function(r_script, args = list(),
   )
 }
 
-#' Step template to run an R script with a set of arguments
+#' Step Template to Run an R Script With a Set of Arguments
 #'
 #' @inheritParams step_tmpl_rscript
 #' @inheritParams step_tmpl_map

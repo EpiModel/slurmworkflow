@@ -1,18 +1,17 @@
-#' Replace a line in a file with new lines
+#' Replace a Line in a File With New Lines
 #'
 #' This function is used to complete the templates provided by the package with
 #' the user provided informations
 #'
 #' @param file_in the file to read from
 #' @param placeholder_line the line to replace
-#' @param file_out path to the new file
+#' @param file_out path to the new file (default to "file_in" if missing)
 #' @param replacement_lines a character vector of lines to insert into the file
 #'
 #' @return path to the output file (invisibly)
 simple_brew <- function(file_in, placeholder_line, replacement_lines,
                         file_out = NULL) {
-  if (is.null(file_out))
-    file_out <- file_in
+  file_out <- if (is.null(file_out)) file_in else file_out
   file_lines <- readLines(file_in)
   placeholder_pos <- which(file_lines == placeholder_line)
 
@@ -29,7 +28,7 @@ simple_brew <- function(file_in, placeholder_line, replacement_lines,
   invisible(file_out)
 }
 
-#' Brew the controller script using the information in the workflow summary
+#' Brew the Controller Script Using the Information in the Workflow Summary
 #'
 #' @keywords internal
 #' @noRd
@@ -46,7 +45,7 @@ create_ctrl_script <- function(wf_summary) {
   )
 }
 
-#' Brew the job script of a step using the information in the workflow summary
+#' Brew the Job Script of a Step Using the Information in the Workflow Summary
 #'
 #' @keywords internal
 #' @noRd

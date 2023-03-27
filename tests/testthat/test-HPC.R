@@ -1,6 +1,6 @@
 test_that("error occurs when calling functions outside of HPC", {
   expect_error(get_workflow_root())
-  expect_warning(change_next_workflow_step(2))
+  expect_error(change_next_workflow_step(2))
 })
 
 test_that("flow alteration errors on invalid step definition", {

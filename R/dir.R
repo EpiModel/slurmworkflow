@@ -1,4 +1,4 @@
-# Helper function to create the files and directory for the workflows
+# Helper functions to create the files and directory for the workflows
 
 #' @keywords internal
 #' @noRd
@@ -11,15 +11,12 @@ create_wf_dir <- function(wf_summary) {
   if (fs::dir_exists(wf_root)) {
     stop("The directory \"", wf_root, "\" already exists.")
   }
-
   wf_tmpl_dir <- fs::path(get_templates_dir(), "workflow")
   fs::dir_copy(wf_tmpl_dir, wf_root)
-  start_workflow <- fs::path(wf_root, "start_workflow.sh")
-  fs::file_chmod(start_workflow, "+x")
-
+  start_workflow_path <- fs::path(wf_root, "start_workflow.sh")
+  fs::file_chmod(start_workflow_path, "+x")
   create_ctrl_script(wf_summary)
-  write_wf_summary(wf_summary)
-
+  write_summary(wf_summary)
   invisible(wf_summary)
 }
 
@@ -28,7 +25,6 @@ create_wf_dir <- function(wf_summary) {
 create_step_dir <- function(wf_summary, step_tmpl_fun) {
   wf_vars <- make_wf_vars(wf_summary)
   last_step_summary <- get_last_step_summary(wf_summary)
-
   step_tmpl_dir <- fs::path(get_templates_dir(), "step_dir")
   fs::dir_copy(step_tmpl_dir, wf_vars[["SWF__CUR_DIR"]])
 
@@ -48,8 +44,7 @@ create_step_dir <- function(wf_summary, step_tmpl_fun) {
   }
 
   create_job_script(wf_summary)
-  write_wf_summary(wf_summary)
-
+  write_summary(wf_summary)
   invisible(wf_summary)
 }
 

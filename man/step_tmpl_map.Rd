@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_map}
 \alias{step_tmpl_map}
-\title{Step template to run an R function with a set of arguments}
+\title{Step Template to Run an R Function With a Set of Arguments}
 \usage{
 step_tmpl_map(
   FUN,
@@ -18,7 +18,7 @@ step_tmpl_map(
 \item{...}{arguments to vectorize over (vectors or lists of strictly
 positive length, or all of zero length).  See also ‘Details’.}
 
-\item{MoreArgs}{a \emph{list} of arguments to the function call. The \code{names}
+\item{MoreArgs}{a \code{list} of arguments to the function call. The \emph{names}
 attribute of \code{args} gives the argument names.}
 
 \item{setup_lines}{(optional) a vector of bash lines to be run first.

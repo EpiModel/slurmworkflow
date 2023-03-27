@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{get_workflow_root}
 \alias{get_workflow_root}
-\title{Get the root directory of a workflow}
+\title{Get the Root Directory of a Workflow}
 \usage{
 get_workflow_root(wf_summary = NULL)
 }

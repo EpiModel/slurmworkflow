@@ -18,7 +18,8 @@ fi
 SWF_ROOT="$(dirname $0)"
 SWF_ROOT="$(realpath $SWF_ROOT)"
 
-USAGE_MSG="$(basename $0) [-h] [-s n] [-d path] -- Script to start a workflow created by `slurmworkflow`
+USAGE_MSG="
+$(basename $0) [-h] [-s n] [-d path] -- Script to start a workflow created by *slurmworkflow*
 
 where:
     -h  show this help text

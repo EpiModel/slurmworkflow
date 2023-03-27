@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_do_call}
 \alias{step_tmpl_do_call}
-\title{Step template to run an R function}
+\title{Step Template to Run an R Function}
 \usage{
 step_tmpl_do_call(what, args, setup_lines = NULL)
 }
