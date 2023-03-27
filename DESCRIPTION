@@ -32,3 +32,4 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
 VignetteBuilder: knitr
 Language: en-US
+URL: https://epimodel.github.io/slurmworkflow/
