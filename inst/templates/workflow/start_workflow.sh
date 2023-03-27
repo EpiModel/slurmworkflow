@@ -15,6 +15,7 @@ then
 fi
 
 SWF_ROOT="$(dirname $0)"
+SWF_ROOT="$(realpath $SWF_ROOT)"
 
 #### Parse args
 POSITIONAL_ARGS=()
