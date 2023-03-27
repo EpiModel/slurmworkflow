@@ -14,8 +14,15 @@ then
     return 0
 fi
 
+# Get the absolute path of the workflow directory
 SWF_ROOT="$(dirname $0)"
 SWF_ROOT="$(realpath $SWF_ROOT)"
+
+HELP_MSG="Start the workflow
+
+-s | --start-step: change the first step to be run
+-d | --working-directory: change the working directory
+-h | --help: print this message"
 
 #### Parse args
 POSITIONAL_ARGS=()
@@ -31,6 +38,10 @@ while [[ $# -gt 0 ]]; do
       cd "$2"
       shift # past argument
       shift # past value
+      ;;
+    -h|--help)
+      echo "$HELP_MSG"
+      exit 0
       ;;
     -*|--*)
       echo "Unknown option $1"
