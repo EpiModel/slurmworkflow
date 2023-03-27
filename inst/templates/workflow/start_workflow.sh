@@ -14,9 +14,33 @@ then
     return 0
 fi
 
-# without argument the job submits the first step
-FIRST_STEP=${1:-1}
 SWF_ROOT="$(dirname $0)"
+
+#### Parse args
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--start-step)
+      FIRST_STEP="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -d|--working-directory)
+      cd "$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      exit 1
+      ;;
+  esac
+done
+####
+
+# without argument the job submits the first step
+FIRST_STEP=${FIRST_STEP:-1}
 
 # source the common bash functions
 source "$SWF_ROOT/SWF/lib.sh"
