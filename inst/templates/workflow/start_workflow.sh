@@ -18,33 +18,36 @@ fi
 SWF_ROOT="$(dirname $0)"
 SWF_ROOT="$(realpath $SWF_ROOT)"
 
-HELP_MSG="Start the workflow
+USAGE_MSG="$(basename $0) [-h] [-s n] [-d path] -- Script to start a workflow created by `slurmworkflow`
 
--s | --start-step: change the first step to be run
--d | --working-directory: change the working directory
--h | --help: print this message"
+where:
+    -h  show this help text
+    -s  set the first step to be run (default: 1)
+    -d  changes the working directory for the workflow (default: the calling working directory)
+"
 
 #### Parse args
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -s|--start-step)
+    -s)
       FIRST_STEP="$2"
       shift # past argument
       shift # past value
       ;;
-    -d|--working-directory)
+    -d)
       cd "$2"
       shift # past argument
       shift # past value
       ;;
-    -h|--help)
-      echo "$HELP_MSG"
+    -h)
+      echo "$USAGE_MSG"
       exit 0
       ;;
-    -*|--*)
+    -*)
       echo "Unknown option $1"
+      echo "$USAGE_MSG"
       exit 1
       ;;
   esac
