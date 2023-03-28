@@ -33,7 +33,7 @@ on each plateform.
 
 ## Creating a New Workflow
 
-```{r, evale = FALSE}
+```{r, eval = FALSE}
 library(slurmworkflow)
 
 wf <- create_workflow(
