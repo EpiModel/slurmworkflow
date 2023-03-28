@@ -3,8 +3,7 @@ swf__start_time <- Sys.time()
 message(
   "\n###################\n",
   "Workflow step starting at:\n",
-  format(swf__start_time) ,
-  "\n###################\n"
+  format(swf__start_time), "\n"
 )
 
 # Step Template ----------------------------------------------------------------
@@ -48,7 +47,8 @@ rm(array_id, array_max, array_offset, corrected_id)
 swf__tmpl_elts[["dots"]] <- NULL
 swf__tmpl_elts[["MoreArgs"]] <- NULL
 gc()
-cat("\n\nStarting User Code ----------------------\n\n")
+message("\n###################\n")
+
 # The actual function call
 do.call(
   what = swf__tmpl_elts[["FUN"]],
