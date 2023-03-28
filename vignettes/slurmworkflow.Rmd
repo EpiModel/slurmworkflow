@@ -61,7 +61,7 @@ store the workflows. This can be overridden with the `wf_common_dir` argument.
 The first step that we use on most of our workflows ensures that our local
 project and the HPC are in sync.
 
-```{r, evale = FALSE}
+```{r, eval = FALSE}
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_bash_lines(c(
