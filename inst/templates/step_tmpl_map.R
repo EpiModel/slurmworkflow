@@ -47,7 +47,7 @@ rm(array_id, array_max, array_offset, corrected_id)
 swf__tmpl_elts[["dots"]] <- NULL
 swf__tmpl_elts[["MoreArgs"]] <- NULL
 gc()
-message("\n###################\n")
+message("###################\n")
 
 # The actual function call
 do.call(
