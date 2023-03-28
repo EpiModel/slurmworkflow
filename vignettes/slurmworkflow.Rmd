@@ -1,0 +1,400 @@
+---
+title: "slurmworkflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{slurmworkflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+The goal of slurmworkflow is to provide a simpler way to run computations on a
+[slurm](https://slurm.schedmd.com/) equipped HPC.
+
+A workflow is a predefined set of steps
+([sbatch](https://slurm.schedmd.com/sbatch.html)s) to be executed on an HPC. By
+default the steps are run sequentially. But slurmworkflow provides tools
+for altering the execution order, allowing conditional execution of the steps
+and loop like behavior.
+
+In this vignette we will walk through the creation of a 4 steps workflow
+showcasing the main utilities provided by slurmworkflow.
+
+## Setup
+
+This vignette uses [Emory's RSPH
+HPC](https://sph.emory.edu/research/labs/index.html) as an example but it has
+also been tested on [Washington's HYAK
+HPC](https://environment.uw.edu/intranet/technology-resources/hyak-uw-hpc-high-performance-computing-program/) and should be working on any HPC using slurm
+as a workload manager.
+
+Also, we highly recommend using [renv](https://rstudio.github.io/renv/index.html)
+when working with an HPC. This will ensure that your code is running as expected
+on each plateform.
+
+## Creating a New Workflow
+
+```{r, evale = FALSE}
+library(slurmworkflow)
+
+wf <- create_workflow(
+  wf_name = "test_slurmworkflow",
+  default_sbatch_opts = list(
+    "partition" = "epimodel",
+    "mail-type" = "FAIL",
+    "mail-user" = "user@emory.edu"
+  )
+)
+```
+
+Here we create a new workflow called `test_slurmworkflow` and store a summary
+of it in the `wf` object. The second argument specifies that unless overridden
+by the steps latter, each step should run on the "epimodel" partition, send a
+mail only if the step fails and send the mail to "user@emory.edu"
+
+Calling `create_workflow` result in the creation of a new folder "workflows/test_slurmworkflow/" that contains the code we will end up sending to the HPC.
+
+Note: the "workflows/" folder at the root of a project is the default place to
+store the workflows. This can be overridden with the `wf_common_dir` argument.
+
+## Adding a Step to the Workflow
+
+The first step that we use on most of our workflows ensures that our local
+project and the HPC are in sync.
+
+```{r, evale = FALSE}
+wf <- add_workflow_step(
+  wf_summary = wf,
+  step_tmpl = step_tmpl_bash_lines(c(
+    "git pull",
+    ". /projects/epimodel/spack/share/spack/setup-env.sh",
+    "spack load r@4.2.1",
+    "Rscript -e \"renv::init(bare = TRUE)\"",
+    "Rscript -e \"renv::restore()\""
+  )),
+  sbatch_opts = list(
+    "mem" = "16G",
+    "cpus-per-task" = 4,
+    "time" = 120
+  )
+)
+```
+
+The `add_workflow_step` functions takes three arguments:
+
+- `wf_summary`: the object we made with `create_workflow`, to indicate onto
+  which workflow we want to add a step
+- `step_tmpl`: a *step template*, a helper function defining what to run on the
+  HPC (more on this latter)
+- `sbatch_opts`: arguments to be passed to `sbatch`. Here we specify that we
+  want 16GB of RAM, 4 CPUs and that the job should not take more than 120
+  minutes. The options passed in `create_workflow` will also be used as they
+  were not overridden.
+
+The *step template* we are using here, `step_tmpl_bash_lines` is the simplest
+one. It takes a vector of `bash` lines and will run then on the HPC.
+
+Here we tell the step to:
+1. run `git pull`
+2. load our own version of spack and load the `R@4.2.1` module
+3. ensure that `renv` is initialized on the project
+4. update the packages to match the *renv.lock* file
+
+## Running R Code directly
+
+As we usually want to run `R` code directly, slurmworkflow provides *step templates*
+simplifying this process.
+
+First we store the lines used to setup `R` on the HPC. On RSPH HPC we use
+spack to manage our modules. The following 2 lines load our spack installation
+and load the `R@4.2.1` module.
+
+```{r, eval = FALSE}
+setup_lines <- c(
+  ". /projects/epimodel/spack/share/spack/setup-env.sh",
+  "spack load r@4.2.1"
+)
+```
+
+### Run Code From an R Script
+
+Our next step will run the following script on the HPC.
+
+```{r, eval = FALSE}
+# R/01-test_do_call.R
+
+cat(paste0("var1 = ", var1, ", var2 = ", var2))
+
+if (!file.exists("did_run")) {
+  file.create("did_run")
+  current_step <- slurmworkflow::get_current_workflow_step()
+  slurmworkflow::change_next_workflow_step(current_step)
+} else {
+  file.remove("did_run")
+}
+```
+
+This very simple script first print the content of `var1` and `var2` to the
+standard output. Note that these variables are never declared in the script. We
+will pass them in the *step template*.
+
+The second part checks for the existence of a file called "did_run". If it does
+not exist yet, it's created and we instruct slurmworkflow to change the *next
+step* to the current step. This means re-running this step.
+
+If the file exists, which means that it's the second time this step is run, it
+removes it. In this case `change_next_workflow_step` is not called so the workflow
+will continue to run the *steps* in order.
+
+Let's now see how we add this script as a workflow step.
+
+
+```{r, eval = FALSE}
+wf <- add_workflow_step(
+  wf_summary = wf,
+  step_tmpl = step_tmpl_do_call_script(
+    r_script = "R/01-test_do_call.R",
+    args = list(var1 = "ABC", var2 = "DEF"),
+    setup_lines = setup_lines
+  ),
+  sbatch_opts = list(
+    "cpus-per-task" = 1,
+    "time" = "00:10:00",
+    "mem" = "4G"
+  )
+)
+```
+
+As before we use the `add_workflow_step` function. But we change the `step_tmpl`
+to use `step_tmpl_do_call_script` with 3 arguments:
+
+- `r_script`: the path to the script to be run. Here "R/01-test_do_call.R". Note
+  that this path must be valid **on the HPC**.
+- `args`: a list of variables that will be available for the *step*. These are
+  the `var1` and `var2` that were missing from the script.
+- `setup_lines`: some bash code to be run before trying to source the script.
+  These are the lines used to load the R module we defined earlier.
+
+For the `sbatch` options, we ask here for 1 CPU, 4GB of RAM and 10 minutes
+maximum.
+
+### Iterating Over Values in an R Script
+
+One common task on an HPC is to run the same code many time and only vary the
+value of some arguments.
+
+On a typical R session the `lapply`, `Map` and `Mapply` functions are a way to
+do this.
+
+slurmworkflow provides the `step_tmpl_map_script` to run a script with a syntax
+similar to the `Map` function.
+
+First let's take a look at the script to be run.
+
+```{r, eval = FALSE}
+# R/02-test_map.R
+
+library(future.apply)
+plan(multicore, workers = ncores)
+
+future_lapply(seq_len(ncores), function(i) {
+  msg <- paste0(
+    "On core: ", i, "\n",
+    "iterator1: ", iterator1, "\n",
+    "iterator2: ", iterator2, "\n",
+    "var1 = ", var1, ", var2 = ", var2, "\n\n"
+  )
+  cat(msg)
+})
+```
+
+This script needs 4 undeclared variables:
+- `iterator1` and `iterator2`: varying values
+- `ncores`, `var1` and `var2`: fixed values shared by all replications
+
+As before these values will be set by the *step template*.
+
+In this script we will print in parallel the message over `ncores`.
+
+Now for the addition of the step.
+
+```{r, eval = FALSE}
+cores_to_use <- 4
+
+wf <- add_workflow_step(
+  wf_summary = wf,
+  step_tmpl = step_tmpl_map_script(
+    r_script = "R/02-test_map.R",
+    # arguments passed to the script
+    iterator1 = 1:4,
+    iterator2 = 5:8,
+    MoreArgs = list(
+      ncores = cores_to_use,
+      var1 = "IJK",
+      var2 = "LMN"
+    ),
+    setup_lines = setup_lines,
+    max_array_size = 200
+  ),
+  sbatch_opts = list(
+    "cpus-per-task" = cores_to_use,
+    "time" = "00:10:00",
+    "mem-per-cpu" = "4G"
+  )
+)
+```
+
+The `step_tmpl_map_script` takes an `r_script` argument similar to
+`step_tmpl_do_call_script`. The next two arguments `iterator1` and `iterator2`
+will be iterated over using `sbatch` arrays. Each replication of the job will
+only have one value for each (1-5, 2-6, 3-7 and 4-8). Similar to `Map`, the
+`MoreArgs` argument defines the values to be shared across replication.
+
+A new argument `max_array_size` as been set to 200. This means that if we had
+more than 200 values to iterate over, the step template would split the job in
+several submission of at most 200 array jobs. This prevents SLURM from refusing
+the submission when too many jobs at once. (With EpiModel we already had cases
+where 5000 array jobs were submitted. This template simply submit them in
+chunks)
+
+In the `sbatch_opts` we specified `mem-per-cpu = "4G"`. This means that if we
+change the `cores_to_use` value, the memory asked will scale as well.
+
+To recap, this step will submit and array of 4 jobs, each receiving a different
+value for `iterator1` and `iterator2`. Each one of theses jobs will run over
+`cores_to_use`. We use this approach with
+[EpiModel](https://github.com/EpiModel/EpiModel) where we run huge arrays of
+jobs where each job is a set of around 30 parallel simulations.
+
+### Running an R Function Directly
+
+Sometimes we want to run a simple function directly without storing it into an
+R script. The `step_tmpl_do_call` and `step_tmpl_map` do exactly that for one
+of functions and `Map`s.
+
+
+```{r, eval = FALSE}
+wf <- add_workflow_step(
+  wf_summary = wf,
+  step_tmpl = step_tmpl_do_call(
+    what = function(var1, var2) {
+      cat(paste0("var1 = ", var1, ", var2 = ", var2))
+    },
+    args = list(var1 = "XYZ", var2 = "UVW"),
+    setup_lines = setup_lines
+  ),
+  sbatch_opts = list(
+    "cpus-per-task" = 1,
+    "time" = "00:10:00",
+    "mem" = "4G",
+    "mail-type" = "END"
+  )
+)
+```
+
+The syntax of these two template are almost identical to the previous two that
+we discussed. The main difference is that we pass them `function`s instead of
+a path to a script.
+
+One important thing to remember here is that the function will be run in clean
+`R` session. This means that all the values used by the `function` must be
+either created or loaded by it or passed as an argument.
+
+Finally, as this will be our last step, we override the `mail-type`
+`sbatch_opts` to receive a mail when this *step* finishes.
+
+## Using the Workflow on an HPC
+
+Now that our workflow is created we want to actually run the code on the HPC.
+
+We assume that we are working on a project called "test_proj", that this
+project was cloned on the HPC at the following path: "~/projects/test_proj" and
+that the "~/projects/test_proj/workflows/" directory exists.
+
+### Sending the Workflow to the HPC
+
+The following commands are to be run from your local computer.
+
+**MacOS or GNU/Linux**
+
+```
+# bash - local
+scp -r workflows/test_slurmworkflow <user>@clogin01.sph.emory.edu:projects/test_proj/workflows/
+```
+
+**Windows**
+
+```
+# bash - local
+set DISPLAY=
+scp -r workflows\test_slurmworkflow <user>@clogin01.sph.emory.edu:projects/test_proj/workflows/
+```
+
+Forgetting `set DISPLAY=` will prevent `scp` from working correctly if using the
+RStudio terminal.
+
+Note that its `workflows\networks_estimation`. Windows uses back-slashes for
+directories and Unix OSes uses forward-slashes.
+
+#### Running the Workflow From the HPC
+
+For this step, you must be at the command line on the HPC. This means that you
+have run: `ssh <user>@clogin01.sph.emory.edu` from your local computer.
+
+*run `set DISPLAY=` on Windows before if you get this error:
+`ssh_askpass: posix_spawnp: No such file or directory`*
+
+You also need to be at the root directory of the project (where the ".git"
+folder is as well as the "renv.lock" file". In this example you would get there
+by running `$ cd ~/projects/test_proj`. The following steps will not
+work if you are not at the root of your project.
+
+Running the *workflow* is done by **executing** the file
+"workflows/estimation/start_workflow.sh" with the following command:
+
+```
+# bash - hpc
+./workflows/test_slurmworkflow/start_workflow.sh
+```
+
+If you are using Windows, it may not be executable. You can solve it with the
+following command:
+
+```
+# bash - hpc
+chmod +x workflows/test_slurmworkflow/start_workflow.sh`
+```
+
+The workflow will not work if you *source* the file (with `source <script>` or
+`. <script>`).
+
+You can check the state of your running workflow as usual with `squeue -u <user>`.
+
+The logs for the workflows are in "workflows/test_slurmworkflow/log/".
+
+### The "start_workflow.sh" Script
+
+This start script additionally allows you to start a workflow at a specific
+step with the `-s` argument.
+
+```
+./workflows/test_slurmworkflow/start_workflow.sh -s 3
+```
+
+This will start the workflow at the 3rd step.
+
+It is sometimes desirable to start the workflow from outside of the project it
+has to run on. The `-d` argument allows you to set a different working directory
+for the workflow.
+
+```
+cd /
+~/projects/test_proj/workflows/test_slurmworkflow/start_workflow.sh -d ~/projects/test_proj
+```
+
+The previous block places us at the root of the file system with `cd /`. Then
+we call the "start_workflow.sh" script using its absolute path and we specify
+that the working directory for the workflow must be the root of the project.
+
+Remember that for `renv` to work, `R` must be called from the directory where
+the ".Rprofile" file is. It's the directory where you can also find the
+"renv.lock" file.
