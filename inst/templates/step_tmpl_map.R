@@ -27,7 +27,7 @@ if (array_id == array_max) {
     )
     sbatch_opts <- list(
       "array" = paste0("0-", next_slice_end),
-      "export" = paste0("ALL,SWF__ARRAY_OFFSET=", corrected_id + 1)
+      "export" = paste0("SWF__ARRAY_OFFSET=", corrected_id + 1)
     )
     slurmworkflow::change_next_workflow_step(
       next_step = slurmworkflow::get_current_workflow_step(),

@@ -168,7 +168,7 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
     helper_write_instructions(instructions, instructions_script)
     list(
       "array" = paste0("0-", array_size),
-      "export" = "ALL,SWF__ARRAY_OFFSET=1"
+      "export" = "SWF__ARRAY_OFFSET=1"
     )
   }
 }
