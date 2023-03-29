@@ -218,22 +218,22 @@ In this script we will print in parallel the message over `ncores`.
 Now for the addition of the step.
 
 ```{r, eval = FALSE}
-cores_to_use <- 4
+cores_to_use <- 2
 
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_map_script(
     r_script = "R/02-test_map.R",
     # arguments passed to the script
-    iterator1 = 1:4,
-    iterator2 = 5:8,
+    iterator1 = 1:5,
+    iterator2 = 6:10,
     MoreArgs = list(
       ncores = cores_to_use,
       var1 = "IJK",
       var2 = "LMN"
     ),
     setup_lines = setup_lines,
-    max_array_size = 200
+    max_array_size = 2
   ),
   sbatch_opts = list(
     "cpus-per-task" = cores_to_use,
@@ -246,15 +246,16 @@ wf <- add_workflow_step(
 The `step_tmpl_map_script` takes an `r_script` argument similar to
 `step_tmpl_do_call_script`. The next two arguments `iterator1` and `iterator2`
 will be iterated over using `sbatch` arrays. Each replication of the job will
-only have one value for each (1-5, 2-6, 3-7 and 4-8). Similar to `Map`, the
+only have one value for each (1-6, 2-7, 3-8, 4-9 and 5-10). Similar to `Map`, the
 `MoreArgs` argument defines the values to be shared across replication.
 
-A new argument `max_array_size` as been set to 200. This means that if we had
-more than 200 values to iterate over, the step template would split the job in
-several submission of at most 200 array jobs. This prevents SLURM from refusing
-the submission when too many jobs at once. (With EpiModel we already had cases
-where 5000 array jobs were submitted. This template simply submit them in
-chunks)
+A new argument `max_array_size` as been set to 2. This means that if we had
+more than 2 values to iterate over, the step template would split the job in
+several submission of at most 2 array jobs. So in this our case, we have
+submissions of array size 2, 2, and 1. This prevents SLURM from refusing the
+submission when too many jobs at once, there is usually a limit of 10000. (With
+EpiModel we already had cases where 5000 array jobs were submitted. This
+template simply submit them in chunks of 500)
 
 In the `sbatch_opts` we specified `mem-per-cpu = "4G"`. This means that if we
 change the `cores_to_use` value, the memory asked will scale as well.
