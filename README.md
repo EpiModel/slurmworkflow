@@ -25,14 +25,13 @@ execution of the steps and loop like behavior.
 
 ## Installation
 
-You can install the development version of **slurmworkflow** with:
+You can install **slurmworkflow** with:
 
 ``` r
 remotes::install_github("EpiModel/slurmworkflow")
 ```
 
-## Example
+## Usage
 
-``` r
-library(slurmworkflow)
-```
+See the [test package](https://github.com/EpiModel/slurmworkflow_tester) and the
+package vignette for a detailed explanation.
