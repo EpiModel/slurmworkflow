@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_bash_script}
 \alias{step_tmpl_bash_script}
-\title{Step template to run a bash script}
+\title{Step Template to Run a Bash Script}
 \usage{
 step_tmpl_bash_script(bash_script)
 }
@@ -13,7 +13,7 @@ step_tmpl_bash_script(bash_script)
 a template function to be used by \code{add_workflow_step}
 }
 \description{
-Step template to run a bash script
+Step Template to Run a Bash Script
 }
 \section{Step Template}{
 

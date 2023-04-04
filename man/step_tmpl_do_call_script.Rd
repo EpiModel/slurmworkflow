@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_do_call_script}
 \alias{step_tmpl_do_call_script}
-\title{Step template to run an R script with a set of arguments}
+\title{Step Template to Run an R Script With a Set of Arguments}
 \usage{
 step_tmpl_do_call_script(r_script, args = list(), setup_lines = NULL)
 }
@@ -19,7 +19,7 @@ This can be used to load the required modules (like R, python, etc).}
 a template function to be used by \code{add_workflow_step}
 }
 \description{
-Step template to run an R script with a set of arguments
+Step Template to Run an R Script With a Set of Arguments
 }
 \section{Step Template}{
 

@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_map_script}
 \alias{step_tmpl_map_script}
-\title{Step template to run an R script with a set of arguments}
+\title{Step Template to Run an R Script With a Set of Arguments}
 \usage{
 step_tmpl_map_script(r_script, ..., MoreArgs = NULL, setup_lines = NULL)
 }
@@ -12,7 +12,7 @@ step_tmpl_map_script(r_script, ..., MoreArgs = NULL, setup_lines = NULL)
 \item{...}{arguments to vectorize over (vectors or lists of strictly
 positive length, or all of zero length).  See also ‘Details’.}
 
-\item{MoreArgs}{a \emph{list} of arguments to the function call. The \code{names}
+\item{MoreArgs}{a \code{list} of arguments to the function call. The \emph{names}
 attribute of \code{args} gives the argument names.}
 
 \item{setup_lines}{(optional) a vector of bash lines to be run first.
@@ -22,7 +22,7 @@ This can be used to load the required modules (like R, python, etc).}
 a template function to be used by \code{add_workflow_step}
 }
 \description{
-Step template to run an R script with a set of arguments
+Step Template to Run an R Script With a Set of Arguments
 }
 \section{Step Template}{
 

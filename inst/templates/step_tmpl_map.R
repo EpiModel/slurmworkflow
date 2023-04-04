@@ -3,8 +3,7 @@ swf__start_time <- Sys.time()
 message(
   "\n###################\n",
   "Workflow step starting at:\n",
-  format(swf__start_time) ,
-  "\n###################\n"
+  format(swf__start_time), "\n"
 )
 
 # Step Template ----------------------------------------------------------------
@@ -28,7 +27,7 @@ if (array_id == array_max) {
     )
     sbatch_opts <- list(
       "array" = paste0("0-", next_slice_end),
-      "export" = paste0("ALL,SWF__ARRAY_OFFSET=", corrected_id + 1)
+      "export" = paste0("SWF__ARRAY_OFFSET=", corrected_id + 1)
     )
     slurmworkflow::change_next_workflow_step(
       next_step = slurmworkflow::get_current_workflow_step(),
@@ -48,6 +47,8 @@ rm(array_id, array_max, array_offset, corrected_id)
 swf__tmpl_elts[["dots"]] <- NULL
 swf__tmpl_elts[["MoreArgs"]] <- NULL
 gc()
+message("###################\n")
+
 # The actual function call
 do.call(
   what = swf__tmpl_elts[["FUN"]],

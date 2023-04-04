@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{create_workflow}
 \alias{create_workflow}
-\title{Create a new workflow}
+\title{Create a New Workflow}
 \usage{
 create_workflow(wf_name, default_sbatch_opts, wf_common_dir = "workflows")
 }
@@ -10,7 +10,7 @@ create_workflow(wf_name, default_sbatch_opts, wf_common_dir = "workflows")
 \item{wf_name}{Name of the new workflow}
 
 \item{default_sbatch_opts}{A named list of default sbatch options for the
-workflow. The "account" and "partition" options are mandatory.
+workflow. The "partition" options is mandatory.
 (see the SBATCH Options section for details).}
 
 \item{wf_common_dir}{Path to the directory where to store the workflows

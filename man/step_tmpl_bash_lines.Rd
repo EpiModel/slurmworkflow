@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_bash_lines}
 \alias{step_tmpl_bash_lines}
-\title{Step template to run bash statements}
+\title{Step Template to Run Bash Statements}
 \usage{
 step_tmpl_bash_lines(bash_lines)
 }
@@ -13,7 +13,7 @@ step_tmpl_bash_lines(bash_lines)
 a template function to be used by \code{add_workflow_step}
 }
 \description{
-Step template to run bash statements
+Step Template to Run Bash Statements
 }
 \section{Step Template}{
 

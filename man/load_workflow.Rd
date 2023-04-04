@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{load_workflow}
 \alias{load_workflow}
-\title{Load a workflow summary from a workflow folder or the environment}
+\title{Load a Workflow Summary From a Workflow Folder or the Environment}
 \usage{
 load_workflow(wf_root = NULL)
 }
@@ -15,5 +15,5 @@ environment variables.}
 The workflow summary
 }
 \description{
-Load a workflow summary from a workflow folder or the environment
+Load a Workflow Summary From a Workflow Folder or the Environment
 }

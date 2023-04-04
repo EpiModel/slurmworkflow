@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{helper_write_instructions}
 \alias{helper_write_instructions}
-\title{Helper function to consistently write instructions to the instruction script}
+\title{Helper Function to Consistently Write Instructions to the Instruction Script}
 \usage{
 helper_write_instructions(instructions, instructions_script)
 }
@@ -12,5 +12,5 @@ helper_write_instructions(instructions, instructions_script)
 \item{instructions_script}{Path to the instructions script}
 }
 \description{
-Helper function to consistently write instructions to the instruction script
+Helper Function to Consistently Write Instructions to the Instruction Script
 }

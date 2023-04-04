@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_rscript}
 \alias{step_tmpl_rscript}
-\title{Step template to run an R script}
+\title{Step Template to Run an R Script}
 \usage{
 step_tmpl_rscript(r_script, setup_lines = NULL)
 }
@@ -16,7 +16,7 @@ This can be used to load the required modules (like R, python, etc).}
 a template function to be used by \code{add_workflow_step}
 }
 \description{
-Step template to run an R script
+Step Template to Run an R Script
 }
 \section{Step Template}{
 

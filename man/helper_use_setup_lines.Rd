@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{helper_use_setup_lines}
 \alias{helper_use_setup_lines}
-\title{Helper function to consistently write setup lines}
+\title{Helper Function to Consistently Write Setup Lines}
 \usage{
 helper_use_setup_lines(instructions, setup_lines)
 }
@@ -15,5 +15,5 @@ step instructions.
 @return The modified instructions}
 }
 \description{
-Helper function to consistently write setup lines
+Helper Function to Consistently Write Setup Lines
 }
