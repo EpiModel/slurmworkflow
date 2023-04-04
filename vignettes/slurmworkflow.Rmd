@@ -19,10 +19,10 @@ Definitions:
     run a full workflow on the HPC
 
 By default the steps are run sequentially. But slurmworkflow provides tools
-for altering the execution order. This allows conditional execution of the steps
+for changing the execution order. This allows conditional execution of the steps
 and loop like behavior.
 
-In this vignette we will walk through the creation of a 4 steps workflow
+In this vignette we walk through the creation of a 4 steps workflow
 showcasing the main utilities provided by slurmworkflow.
 
 ## Setup
@@ -56,11 +56,13 @@ wf <- create_workflow(
 
 First we create a new workflow called "test_slurmworkflow" and store a summary
 of it in the `wf` object. The second argument specifies that by default each
-*step* should run on the "epimodel" partition and send a mail if the step fails
-at "user@emory.edu".
+*step* should run on the "epimodel" partition and send a mail at
+"user@emory.edu" if the step fails.
 
-Calling `create_workflow()` result in the creation of a *workflow directory* :
-"workflows/test_slurmworkflow/" that contains the code to send to the HPC.
+Calling `create_workflow()` result in the creation of the *workflow directory*:
+"workflows/test_slurmworkflow/" that contains the code to send to the HPC. A
+*workflow summary* is returned and stored in the `wf` variable. We'll use it to
+add elements to the workflow.
 
 ## Adding a Step to the Workflow
 
@@ -87,7 +89,7 @@ wf <- add_workflow_step(
 
 The `add_workflow_step()` functions takes three arguments:
 
-- `wf_summary`: the object we made with `create_workflow()`, to indicate onto
+- `wf_summary`: the object we made with `create_workflow()`, indicating onto
   which workflow we want to add a step.
 - `step_tmpl`: a *step template*, a helper function defining what to run on the
   HPC (more on this latter).
@@ -102,7 +104,8 @@ Here we tell the step to:
 1. run `git pull`
 2. load our own version of [spack](https://spack.readthedocs.io/en/latest/) and
    load the `R@4.2.1` module
-3. ensure that `renv` is initialized on the project (no effect if its already the case)
+3. ensure that `renv` is initialized on the project (no effect if its already
+   the case)
 4. update the packages to match the *renv.lock* file
 
 ## Running R Code directly
@@ -147,8 +150,8 @@ not exist yet, it's created and we instruct slurmworkflow to change the *next
 step* to the current step. This is how you make a loop in slurmworkflow.
 
 If the file exists, which means that it's the second time this step is run, it
-removes it. In this case `change_next_workflow_step()` is not called so the
-workflow will continue to run the *steps* in order.
+removes it. In this case `change_next_workflow_step()` is not called and the
+workflow will just continue to the next *step*.
 
 Let's now see how we add this script as a workflow step.
 
@@ -186,17 +189,17 @@ minutes.
 One common task on an HPC is to run the same code many time and only vary the
 value of some arguments.
 
-On a typical R session `lapply()`, `Map()` and `Mapply()` are a way to do this.
+On a typical R session `lapply()`, `Map()` and `Mapply()` are available for this
+purpose.
 
-slurmworkflow provides the `step_tmpl_map_script()` to run a script with a syntax
-similar to the `Map()` function. This create an array job where each element of
-input are processed in parallel.
+slurmworkflow provides the `step_tmpl_map_script()` to run a script with a
+syntax similar to the `Map()` function. This create an array job where each
+element of input are processed in parallel.
 
 First let's take a look at the script to be run.
 
 ```{r, eval = FALSE}
 # filename: R/02-test_map.R
-
 library(future.apply)
 plan(multicore, workers = ncores)
 
@@ -277,7 +280,6 @@ here have 2 levels of parallelization. One in
 Sometimes we want to run a simple function directly without storing it into an
 R script. The `step_tmpl_do_call()` and `step_tmpl_map()` do exactly that for
 one-of functions and `Map()`s.
-
 
 ```{r, eval = FALSE}
 wf <- add_workflow_step(
