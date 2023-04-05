@@ -41,9 +41,9 @@
     </div>
 
     <div class="section level2">
-      <h2 id="all-functions">All functions<a class="anchor" aria-label="anchor" href="#all-functions"></a></h2>
+      <h2 id="workflow-creation">Workflow Creation<a class="anchor" aria-label="anchor" href="#workflow-creation"></a></h2>
       
-      
+      <p class="section-desc"></p><p>Functions to create and edit a workflow</p>
 
       
     </div><div id="" class="section level2">
@@ -53,50 +53,26 @@
 
       <dl><dt>
           
-          <code><a href="add_workflow_step.html">add_workflow_step()</a></code> 
-        </dt>
-        <dd>Add a Step to an Existing Workflow</dd>
-      </dl><dl><dt>
-          
-          <code><a href="change_next_workflow_step.html">change_next_workflow_step()</a></code> 
-        </dt>
-        <dd>Alter the Next Step of a Running Workflow</dd>
-      </dl><dl><dt>
-          
           <code><a href="create_workflow.html">create_workflow()</a></code> 
         </dt>
         <dd>Create a New Workflow</dd>
       </dl><dl><dt>
           
-          <code><a href="get_current_workflow_step.html">get_current_workflow_step()</a></code> 
+          <code><a href="add_workflow_step.html">add_workflow_step()</a></code> 
         </dt>
-        <dd>Get the Number of the Currently Running Step of a Workflow</dd>
-      </dl><dl><dt>
-          
-          <code><a href="get_workflow_root.html">get_workflow_root()</a></code> 
-        </dt>
-        <dd>Get the Root Directory of a Workflow</dd>
-      </dl><dl><dt>
-          
-          <code><a href="helper_use_setup_lines.html">helper_use_setup_lines()</a></code> 
-        </dt>
-        <dd>Helper Function to Consistently Write Setup Lines</dd>
-      </dl><dl><dt>
-          
-          <code><a href="helper_write_instructions.html">helper_write_instructions()</a></code> 
-        </dt>
-        <dd>Helper Function to Consistently Write Instructions to the Instruction Script</dd>
-      </dl><dl><dt>
-          
-          <code><a href="load_workflow.html">load_workflow()</a></code> 
-        </dt>
-        <dd>Load a Workflow Summary From a Workflow Folder or the Environment</dd>
-      </dl><dl><dt>
-          
-          <code><a href="simple_brew.html">simple_brew()</a></code> 
-        </dt>
-        <dd>Replace a Line in a File With New Lines</dd>
-      </dl><dl><dt>
+        <dd>Add a Step to an Existing Workflow</dd>
+      </dl></div><div class="section level2">
+      <h2 id="step-templates">Step Templates<a class="anchor" aria-label="anchor" href="#step-templates"></a></h2>
+      
+      <p class="section-desc"></p><p>Functions governing what is run by a step. They are to be used as argument to <code><a href="../reference/add_workflow_step.html">add_workflow_step()</a></code></p>
+
+      
+    </div><div id="" class="section level2">
+      
+      
+      
+
+      <dl><dt>
           
           <code><a href="step_tmpl_bash_lines.html">step_tmpl_bash_lines()</a></code> 
         </dt>
@@ -131,8 +107,61 @@
           <code><a href="step_tmpl_rscript.html">step_tmpl_rscript()</a></code> 
         </dt>
         <dd>Step Template to Run an R Script</dd>
+      </dl></div><div class="section level2">
+      <h2 id="changing-the-execution-order">Changing the Execution Order<a class="anchor" aria-label="anchor" href="#changing-the-execution-order"></a></h2>
+      
+      <p class="section-desc"></p><p>Functions to query the currently running step and change the step to be run next. These functions are to be used inside a workflow running on an HPC. They allow conditional execution and loop like behavior.</p>
+
+      
+    </div><div id="" class="section level2">
+      
+      
+      
+
+      <dl><dt>
+          
+          <code><a href="change_next_workflow_step.html">change_next_workflow_step()</a></code> 
+        </dt>
+        <dd>Alter the Next Step of a Running Workflow</dd>
+      </dl><dl><dt>
+          
+          <code><a href="get_current_workflow_step.html">get_current_workflow_step()</a></code> 
+        </dt>
+        <dd>Get the Number of the Currently Running Step of a Workflow</dd>
+      </dl></div><div class="section level2">
+      <h2 id="utilities-for-making-custom-step-templates">Utilities for Making Custom Step Templates<a class="anchor" aria-label="anchor" href="#utilities-for-making-custom-step-templates"></a></h2>
+      
+      <p class="section-desc"></p><p>Functions used to create custom step templates from scratch. In most case, a new step template can be created as a wrapper around one of the existing templates.</p>
+
+      
+    </div><div id="" class="section level2">
+      
+      
+      
+
+      <dl><dt>
+          
+          <code><a href="get_workflow_root.html">get_workflow_root()</a></code> 
+        </dt>
+        <dd>Get the Root Directory of a Workflow</dd>
+      </dl><dl><dt>
+          
+          <code><a href="load_workflow.html">load_workflow()</a></code> 
+        </dt>
+        <dd>Load a Workflow Summary From a Workflow Folder or the Environment</dd>
+      </dl><dl><dt>
+          
+          <code><a href="helper_use_setup_lines.html">helper_use_setup_lines()</a></code> 
+        </dt>
+        <dd>Helper Function to Consistently Write Setup Lines</dd>
+      </dl><dl><dt>
+          
+          <code><a href="helper_write_instructions.html">helper_write_instructions()</a></code> 
+        </dt>
+        <dd>Helper Function to Consistently Write Instructions to the Instruction Script</dd>
       </dl></div>
-  </main></div>
+  </main><aside class="col-md-3"><nav id="toc"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
