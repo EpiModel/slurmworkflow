@@ -13,16 +13,14 @@ reference:
 - title: "Step Templates"
   desc: >
     Functions governing what is run by a step.
-    They are to be used as argument to `add_workflow_step()`
   contents:
   - starts_with("step_tmpl")
 
 - title: "Changing the Execution Order"
   desc: >
     Functions to query the currently running step and change the step to be run
-    next.
-    These functions are to be used inside a workflow running on an HPC. They
-    allow conditional execution and loop like behavior.
+    next. These functions are to be used inside a workflow running on an HPC.
+    They allow conditional execution and loop like behavior.
   contents:
   - change_next_workflow_step
   - get_current_workflow_step
