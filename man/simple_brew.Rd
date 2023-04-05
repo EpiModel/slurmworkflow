@@ -22,3 +22,4 @@ path to the output file (invisibly)
 This function is used to complete the templates provided by the package with
 the user provided informations
 }
+\keyword{internal}
