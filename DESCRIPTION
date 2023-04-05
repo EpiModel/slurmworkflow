@@ -1,7 +1,7 @@
 Package: slurmworkflow
 Title: Build workflows for the Slurm workload manager
-Version: 0.1.1
-Date: 2023-04-04
+Version: 0.1.0
+Date: 2023-04-05
 Authors@R:
     c(person(given = "Adrien",
              family = "Le Guillou",

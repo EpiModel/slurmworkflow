@@ -2,3 +2,38 @@ url: https://epimodel.github.io/slurmworkflow/
 template:
   bootstrap: 5
 
+reference:
+- title: "Workflow Creation"
+  desc: >
+    Functions to create and edit a workflow
+  contents:
+  - create_workflow
+  - add_workflow_step
+
+- title: "Step Templates"
+  desc: >
+    Functions governing what is run by a step.
+    They are to be used as argument to `add_workflow_step()`
+  contents:
+  - starts_with("step_tmpl")
+
+- title: "Changing the Execution Order"
+  desc: >
+    Functions to query the currently running step and change the step to be run
+    next.
+    These functions are to be used inside a workflow running on an HPC. They
+    allow conditional execution and loop like behavior.
+  contents:
+  - change_next_workflow_step
+  - get_current_workflow_step
+
+- title: "Utilities for Making Custom Step Templates"
+  desc: >
+    Functions used to create custom step templates from scratch.
+    In most case, a new step template can be created as a wrapper around one of
+    the existing templates.
+  contents:
+  - get_workflow_root
+  - load_workflow
+  - helper_use_setup_lines
+  - helper_write_instructions
