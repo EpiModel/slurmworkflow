@@ -55,6 +55,10 @@ step_tmpl_bash_script <- function(bash_script) {
 
 #' Step Template to Run an R Script
 #'
+#' Contrary to `step_tmpl_do_call_script`, this function copies the content of
+#' the script to the workflow folder. Therefore, the script do not have to exist
+#' on the HPC when using this template.
+#'
 #' @param r_script The R script to be run by the workflow step
 #' @param setup_lines (optional) a vector of bash lines to be run first.
 #'   This can be used to load the required modules (like R, python, etc).

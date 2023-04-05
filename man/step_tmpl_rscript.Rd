@@ -16,7 +16,9 @@ This can be used to load the required modules (like R, python, etc).}
 a template function to be used by \code{add_workflow_step}
 }
 \description{
-Step Template to Run an R Script
+Contrary to \code{step_tmpl_do_call_script}, this function copies the content of
+the script to the workflow folder. Therefore, the script do not have to exist
+on the HPC when using this template.
 }
 \section{Step Template}{
 
