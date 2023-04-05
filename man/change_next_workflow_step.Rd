@@ -18,8 +18,7 @@ The \code{next_step} value (invisibly)
 }
 \description{
 This function allows a running job to alter the workflow sequence by choosing
-which step to run after the current one. (See
-\code{vignette("altering-the-order-of-steps")})
+which step to run after the current one.
 }
 \examples{
 \dontrun{

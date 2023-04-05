@@ -20,8 +20,8 @@
 #' Some basic ones are provided by the `slurmworkflow` package. They instruct
 #' the workflow to run either a bash script, a set of bash lines given as a
 #' character vector or an R script.
-#' Additional Step Templates can be created to simplify specific tasks, see the
-#' `vignette("making-a-custom-step-template")` for details.
+#' Additional Step Templates can be created to simplify specific tasks. The
+#' easiest way to do so is as wrappers around existing templates.
 #'
 #' @export
 step_tmpl_bash_lines <- function(bash_lines) {

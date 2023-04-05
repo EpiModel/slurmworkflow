@@ -138,8 +138,7 @@ get_workflow_root <- function(wf_summary = NULL) {
 #' Alter the Next Step of a Running Workflow
 #'
 #' This function allows a running job to alter the workflow sequence by choosing
-#' which step to run after the current one. (See
-#' `vignette("altering-the-order-of-steps")`)
+#' which step to run after the current one.
 #'
 #' @param next_step A scalar number coercible to integer instructing the
 #'   workflow system which step to run next
