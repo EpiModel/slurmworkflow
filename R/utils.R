@@ -9,6 +9,7 @@
 #' @param replacement_lines a character vector of lines to insert into the file
 #'
 #' @return path to the output file (invisibly)
+#' @keywords internal
 simple_brew <- function(file_in, placeholder_line, replacement_lines,
                         file_out = NULL) {
   file_out <- if (is.null(file_out)) file_in else file_out
