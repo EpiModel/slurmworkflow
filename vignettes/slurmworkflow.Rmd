@@ -40,7 +40,7 @@ HPC tested:
 We highly recommend using [renv](https://rstudio.github.io/renv/index.html)
 when working with an HPC.
 
-## Creating a New Workflow
+## Creating a new workflow
 
 ```{r, eval = FALSE}
 library(slurmworkflow)
@@ -65,7 +65,7 @@ Calling `create_workflow()` result in the creation of the *workflow directory*:
 *workflow summary* is returned and stored in the `wf` variable. We'll use it to
 add elements to the workflow.
 
-## Adding a Step to the Workflow
+## Adding a step to the workflow
 
 The first step that we use on most of our *workflows* ensures that our local
 project and the HPC are in sync.
@@ -125,7 +125,7 @@ setup_lines <- c(
 )
 ```
 
-### Run Code From an R Script
+### Run code from an R script
 
 Our next step will run the following script on the HPC.
 
@@ -185,7 +185,7 @@ As before we use the `add_workflow_step()` function. But we change the
 For the `sbatch` options, we ask here for 1 CPU, 4GB of RAM and a maximum of 10
 minutes.
 
-### Iterating Over Values in an R Script
+### Iterating over values in an R script
 
 One common task on an HPC is to run the same code many time and only vary the
 value of some arguments.
@@ -276,7 +276,7 @@ jobs where each job is a set of around 30 parallel simulations. Therefore, we
 here have 2 levels of parallelization. One in
 [slurm](https://slurm.schedmd.com/) and one in the script itself.
 
-### Running an R Function Directly
+### Running an R function directly
 
 Sometimes we want to run a simple function directly without storing it into an
 R script. The `step_tmpl_do_call()` and `step_tmpl_map()` do exactly that for
@@ -313,7 +313,7 @@ Finally, as this will be our last step, we override the `mail-type`
 `sbatch_opts` to receive a mail when this *step* finishes, whatever the outcome.
 This way we receive a mail telling us that the *workflow* is finished.
 
-## Using the Workflow on an HPC
+## Using the workflow on an HPC
 
 Now that our workflow is created how to actually run the code on the HPC?
 
@@ -321,7 +321,7 @@ We assume that we are working on a project called "test_proj", that this
 project was cloned on the HPC at the following path: "~/projects/test_proj" and
 that the "~/projects/test_proj/workflows/" directory exists.
 
-### Sending the Workflow to the HPC
+### Sending the workflow to the HPC
 
 The following commands are to be run from your local computer.
 
@@ -346,7 +346,7 @@ RStudio terminal.
 Note that it's `workflows\networks_estimation`. Windows uses back-slashes for
 directories and Unix OSes uses forward-slashes.
 
-#### Running the Workflow From the HPC
+#### Running the workflow from the HPC
 
 For this step, you must be at the command line on the HPC. This means that you
 have run: `ssh <user>@clogin01.sph.emory.edu` from your local computer.
@@ -382,7 +382,7 @@ You can check the state of your running workflow as usual with `squeue -u <user>
 
 The logs for the workflows are in "workflows/test_slurmworkflow/log/".
 
-### The "start_workflow.sh" Script
+### The "start_workflow.sh" script
 
 This start script additionally allows you to start a workflow at a specific
 step with the `-s` argument.
