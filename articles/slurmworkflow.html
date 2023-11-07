@@ -103,7 +103,7 @@ HYAK HPC</a></li>
 with an HPC.</p>
 </div>
 <div class="section level2">
-<h2 id="creating-a-new-workflow">Creating a New Workflow<a class="anchor" aria-label="anchor" href="#creating-a-new-workflow"></a>
+<h2 id="creating-a-new-workflow">Creating a new workflow<a class="anchor" aria-label="anchor" href="#creating-a-new-workflow"></a>
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://epimodel.github.io/slurmworkflow/">slurmworkflow</a></span><span class="op">)</span></span>
@@ -127,7 +127,7 @@ returned and stored in the <code>wf</code> variable. We’ll use it to add
 elements to the workflow.</p>
 </div>
 <div class="section level2">
-<h2 id="adding-a-step-to-the-workflow">Adding a Step to the Workflow<a class="anchor" aria-label="anchor" href="#adding-a-step-to-the-workflow"></a>
+<h2 id="adding-a-step-to-the-workflow">Adding a step to the workflow<a class="anchor" aria-label="anchor" href="#adding-a-step-to-the-workflow"></a>
 </h2>
 <p>The first step that we use on most of our <em>workflows</em> ensures
 that our local project and the HPC are in sync.</p>
@@ -189,7 +189,7 @@ by all <code>R</code> <em>step templates</em>.</p>
 <span>  <span class="st">"spack load r@4.2.1"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <div class="section level3">
-<h3 id="run-code-from-an-r-script">Run Code From an R Script<a class="anchor" aria-label="anchor" href="#run-code-from-an-r-script"></a>
+<h3 id="run-code-from-an-r-script">Run code from an R script<a class="anchor" aria-label="anchor" href="#run-code-from-an-r-script"></a>
 </h3>
 <p>Our next step will run the following script on the HPC.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
@@ -251,7 +251,7 @@ defined earlier.</li>
 RAM and a maximum of 10 minutes.</p>
 </div>
 <div class="section level3">
-<h3 id="iterating-over-values-in-an-r-script">Iterating Over Values in an R Script<a class="anchor" aria-label="anchor" href="#iterating-over-values-in-an-r-script"></a>
+<h3 id="iterating-over-values-in-an-r-script">Iterating over values in an R script<a class="anchor" aria-label="anchor" href="#iterating-over-values-in-an-r-script"></a>
 </h3>
 <p>One common task on an HPC is to run the same code many time and only
 vary the value of some arguments.</p>
@@ -338,7 +338,7 @@ simulations. Therefore, we here have 2 levels of parallelization. One in
 itself.</p>
 </div>
 <div class="section level3">
-<h3 id="running-an-r-function-directly">Running an R Function Directly<a class="anchor" aria-label="anchor" href="#running-an-r-function-directly"></a>
+<h3 id="running-an-r-function-directly">Running an R function directly<a class="anchor" aria-label="anchor" href="#running-an-r-function-directly"></a>
 </h3>
 <p>Sometimes we want to run a simple function directly without storing
 it into an R script. The <code><a href="../reference/step_tmpl_do_call.html">step_tmpl_do_call()</a></code> and
@@ -374,7 +374,7 @@ mail telling us that the <em>workflow</em> is finished.</p>
 </div>
 </div>
 <div class="section level2">
-<h2 id="using-the-workflow-on-an-hpc">Using the Workflow on an HPC<a class="anchor" aria-label="anchor" href="#using-the-workflow-on-an-hpc"></a>
+<h2 id="using-the-workflow-on-an-hpc">Using the workflow on an HPC<a class="anchor" aria-label="anchor" href="#using-the-workflow-on-an-hpc"></a>
 </h2>
 <p>Now that our workflow is created how to actually run the code on the
 HPC?</p>
@@ -383,7 +383,7 @@ this project was cloned on the HPC at the following path:
 “~/projects/test_proj” and that the “~/projects/test_proj/workflows/”
 directory exists.</p>
 <div class="section level3">
-<h3 id="sending-the-workflow-to-the-hpc">Sending the Workflow to the HPC<a class="anchor" aria-label="anchor" href="#sending-the-workflow-to-the-hpc"></a>
+<h3 id="sending-the-workflow-to-the-hpc">Sending the workflow to the HPC<a class="anchor" aria-label="anchor" href="#sending-the-workflow-to-the-hpc"></a>
 </h3>
 <p>The following commands are to be run from your local computer.</p>
 <p><strong>MacOS or GNU/Linux</strong></p>
@@ -399,7 +399,7 @@ from working correctly if using the RStudio terminal.</p>
 uses back-slashes for directories and Unix OSes uses
 forward-slashes.</p>
 <div class="section level4">
-<h4 id="running-the-workflow-from-the-hpc">Running the Workflow From the HPC<a class="anchor" aria-label="anchor" href="#running-the-workflow-from-the-hpc"></a>
+<h4 id="running-the-workflow-from-the-hpc">Running the workflow from the HPC<a class="anchor" aria-label="anchor" href="#running-the-workflow-from-the-hpc"></a>
 </h4>
 <p>For this step, you must be at the command line on the HPC. This means
 that you have run: <code>ssh &lt;user&gt;@clogin01.sph.emory.edu</code>
@@ -431,7 +431,7 @@ chmod +x workflows/test_slurmworkflow/start_workflow.sh`</code></pre>
 </div>
 </div>
 <div class="section level3">
-<h3 id="the-start_workflow-sh-script">The “start_workflow.sh” Script<a class="anchor" aria-label="anchor" href="#the-start_workflow-sh-script"></a>
+<h3 id="the-start_workflow-sh-script">The “start_workflow.sh” script<a class="anchor" aria-label="anchor" href="#the-start_workflow-sh-script"></a>
 </h3>
 <p>This start script additionally allows you to start a workflow at a
 specific step with the <code>-s</code> argument.</p>
