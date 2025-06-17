@@ -17,6 +17,7 @@ test_that("`add_workflow_step` produces the right file structure", {
   wf <- create_workflow(
     wf_name = wf_name,
     default_sbatch_opts = list(
+      "partition" = "test_partition",
       "account" = "test_account"
     ),
     wf_common_dir = test_dir

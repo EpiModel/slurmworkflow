@@ -7,6 +7,7 @@ test_that("`create_workflow` produces the right file structure", {
   wf <- create_workflow(
     wf_name = wf_name,
     default_sbatch_opts = list(
+      "partition" = "dummy_part",
       "account" = "test_account"
     ),
     wf_common_dir = test_dir
@@ -35,7 +36,7 @@ test_that("`create_workflow` fails if a workflow with the same name already exis
   create_workflow(
     wf_name = wf_name,
     default_sbatch_opts = list(
-      "account" = "test_account"
+      "partition" = "test_partition"
     ),
     wf_common_dir = test_dir
   )
@@ -44,8 +45,25 @@ test_that("`create_workflow` fails if a workflow with the same name already exis
     create_workflow(
       wf_name = wf_name,
       default_sbatch_opts = list(
+        "partition" = "test_partition"
+      ),
+      wf_common_dir = test_dir
+    )
+  )
+})
+
+test_that("`create_workflow` fails if no `partition` is selected", {
+  test_dir <- "workflows"
+  withr::local_file(test_dir)
+
+  wf_name <- "test_wf_part"
+
+  expect_error(
+    create_workflow(
+      wf_name = wf_name,
+      default_sbatch_opts = list(
         "account" = "test_account"
-        ),
+      ),
       wf_common_dir = test_dir
     )
   )
