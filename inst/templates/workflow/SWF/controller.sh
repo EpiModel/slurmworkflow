@@ -38,4 +38,3 @@ then
 else
     echo "All steps are done"
 fi
-
