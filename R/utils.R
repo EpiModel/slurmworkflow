@@ -35,8 +35,6 @@ simple_brew <- function(file_in, placeholder_line, replacement_lines,
 #' @noRd
 create_ctrl_script <- function(wf_summary) {
   sbatch_opts <- wf_summary[["default_sbatch_opts"]]
-  if (!"partition" %in% sbatch_opts)
-    stop("A `partition` option must be defined in `default_sbatch_opts`")
   wf_vars <- make_wf_vars(wf_summary)
 
   relevant_opts <- intersect(names(sbatch_opts), c("account", "partition"))

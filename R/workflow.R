@@ -38,6 +38,8 @@
 create_workflow <- function(wf_name, default_sbatch_opts,
                             wf_common_dir = "workflows") {
   sbatch_opts <- validate_sbatch_opts(default_sbatch_opts)
+  if (!"partition" %in% sbatch_opts)
+    stop("A `partition` option must be defined in `default_sbatch_opts`")
   wf_summary <- new_summary(fs::path(wf_common_dir, wf_name), sbatch_opts)
   create_wf_dir(wf_summary)
   wf_summary
