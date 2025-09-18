@@ -138,9 +138,11 @@ step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
 #'   positive length, or all of zero length).  See also ‘Details’.
 #' @param MoreArgs a `list` of arguments to the function call. The *names*
 #'   attribute of `args` gives the argument names.
-#' @param max_array_size maximum number of array jobs to be submitted at the
-#'   same time. Should be strictly less than the maximum number of jobs you are
-#'   allowed to submit to slurm on your HPC.
+#' @param max_array_size maximum number of array jobs to be submitted at once.
+#'   It should be strictly less than the maximum number of jobs you are allowed
+#'   to submit to `slurm` on your HPC. If the number of jobs is greater than
+#'   `max_array_size`, they will be submitted in multiple batches. The
+#'   submission of the next batch is automatically handled by `slurmworkflow`.
 #'
 #' @inheritParams step_tmpl_do_call
 #' @inherit step_tmpl_rscript return
