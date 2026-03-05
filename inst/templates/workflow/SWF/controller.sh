@@ -26,6 +26,9 @@ make_env_cur_vars "$SWF_CUR"
 # Run the next sbatch job
 if [[ -f "$SWF__JOB_SCRIPT" ]]
 then
+    # Archive old log files for this step before submitting
+    archive_old_logs "${SWF_NAME}_step${SWF_CUR}" "$SLURM_JOB_ID" "$SWF_LOG_DIR"
+
     sbatch --dependency=afterany:"$SLURM_JOB_ID" \
            --output="$SWF__STEPS_OUT" \
            --job-name="${SWF_NAME}_step${SWF_CUR}" \
