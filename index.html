@@ -51,19 +51,421 @@
 </h1></div>
 <!-- badges: start -->
 
-<p><strong>slurmworkflow</strong> solves the issue of running multiple inter-dependant jobs on a <a href="https://slurm.schedmd.com/" class="external-link">slurm</a> equipped HPC without a long lived job or a persistent SSH session.</p>
-<p>A workflow is a predefined set of steps (<a href="https://slurm.schedmd.com/sbatch.html" class="external-link">sbatch</a>s) to be executed on an HPC. By default the steps are run sequentially. But <strong>slurmworkflow</strong> provides tools for altering the execution order, allowing conditional execution of the steps and loop like behavior.</p>
+<p><strong>slurmworkflow</strong> is an R package for building and running multi-step computational workflows on <a href="https://slurm.schedmd.com/" class="external-link">Slurm</a>-equipped HPC clusters. Define your entire pipeline locally in R, transfer it to the HPC, and launch it with a single command — no persistent SSH sessions, no long-lived daemons, no manual job chaining.</p>
+<div class="section level2">
+<h2 id="how-it-works">How It Works<a class="anchor" aria-label="anchor" href="#how-it-works"></a>
+</h2>
+<p>A <strong>workflow</strong> is a sequence of <strong>steps</strong>, where each step is an <a href="https://slurm.schedmd.com/sbatch.html" class="external-link"><code>sbatch</code></a> job submission. Under the hood, slurmworkflow uses Slurm’s <code>--dependency=afterany</code> mechanism to chain steps through a lightweight controller script:</p>
+<pre><code>start_workflow.sh
+    └─▶ controller.sh (step 1)
+            └─▶ step 1 runs
+                    └─▶ controller.sh (step 2)
+                            └─▶ step 2 runs
+                                    └─▶ ...continues until all steps complete</code></pre>
+<p>Each step can also <strong>alter the execution flow</strong> at runtime — enabling loops, conditional branching, and dynamic multi-batch array job submission.</p>
+</div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>You can install <strong>slurmworkflow</strong> with:</p>
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"EpiModel/slurmworkflow"</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"EpiModel/slurmworkflow"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="usage">Usage<a class="anchor" aria-label="anchor" href="#usage"></a>
+<h2 id="quick-start">Quick Start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
 </h2>
-<p>See the <a href="https://github.com/EpiModel/slurmworkflow_tester" class="external-link">test package</a> and the package vignette for a detailed explanation.</p>
+<div class="section level3">
+<h3 id="id_1-create-a-workflow">1. Create a workflow<a class="anchor" aria-label="anchor" href="#id_1-create-a-workflow"></a>
+</h3>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://epimodel.github.io/slurmworkflow/">slurmworkflow</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/create_workflow.html">create_workflow</a></span><span class="op">(</span></span>
+<span>  wf_name <span class="op">=</span> <span class="st">"my_analysis"</span>,</span>
+<span>  default_sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    <span class="st">"partition"</span> <span class="op">=</span> <span class="st">"my_partition"</span>,</span>
+<span>    <span class="st">"mail-type"</span> <span class="op">=</span> <span class="st">"FAIL"</span>,</span>
+<span>    <span class="st">"mail-user"</span> <span class="op">=</span> <span class="st">"user@university.edu"</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>This creates a <code>workflows/my_analysis/</code> directory containing all the shell scripts and metadata needed to run on the HPC.</p>
+</div>
+<div class="section level3">
+<h3 id="id_2-add-steps">2. Add steps<a class="anchor" aria-label="anchor" href="#id_2-add-steps"></a>
+</h3>
+<p><strong>Run bash commands:</strong></p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu"><a href="reference/step_tmpl_bash_lines.html">step_tmpl_bash_lines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>    <span class="st">"git pull"</span>,</span>
+<span>    <span class="st">"module load R/4.3.0"</span>,</span>
+<span>    <span class="st">"Rscript -e 'renv::restore()'"</span></span>
+<span>  <span class="op">)</span><span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mem"</span> <span class="op">=</span> <span class="st">"16G"</span>, <span class="st">"cpus-per-task"</span> <span class="op">=</span> <span class="fl">4</span>, <span class="st">"time"</span> <span class="op">=</span> <span class="fl">120</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p><strong>Run an R script with arguments:</strong></p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu"><a href="reference/step_tmpl_do_call_script.html">step_tmpl_do_call_script</a></span><span class="op">(</span></span>
+<span>    r_script <span class="op">=</span> <span class="st">"R/01-fit_model.R"</span>,</span>
+<span>    args <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>n_sims <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span>,</span>
+<span>    setup_lines <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"module load R/4.3.0"</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"cpus-per-task"</span> <span class="op">=</span> <span class="fl">8</span>, <span class="st">"time"</span> <span class="op">=</span> <span class="st">"04:00:00"</span>, <span class="st">"mem"</span> <span class="op">=</span> <span class="st">"32G"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p><strong>Run parallel array jobs (like <code>Map</code>):</strong></p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu"><a href="reference/step_tmpl_map_script.html">step_tmpl_map_script</a></span><span class="op">(</span></span>
+<span>    r_script <span class="op">=</span> <span class="st">"R/02-run_scenario.R"</span>,</span>
+<span>    scenario_id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">500</span>,</span>
+<span>    MoreArgs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>n_reps <span class="op">=</span> <span class="fl">32</span>, n_cores <span class="op">=</span> <span class="fl">8</span><span class="op">)</span>,</span>
+<span>    setup_lines <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"module load R/4.3.0"</span><span class="op">)</span>,</span>
+<span>    max_array_size <span class="op">=</span> <span class="fl">500</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    <span class="st">"cpus-per-task"</span> <span class="op">=</span> <span class="fl">8</span>,</span>
+<span>    <span class="st">"time"</span> <span class="op">=</span> <span class="st">"04:00:00"</span>,</span>
+<span>    <span class="st">"mem-per-cpu"</span> <span class="op">=</span> <span class="st">"5G"</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="id_3-deploy-and-run">3. Deploy and run<a class="anchor" aria-label="anchor" href="#id_3-deploy-and-run"></a>
+</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># Copy to HPC</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a><span class="fu">scp</span> <span class="at">-r</span> workflows/my_analysis user@hpc.university.edu:projects/my_project/workflows/</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a><span class="co"># SSH in and launch</span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="fu">ssh</span> user@hpc.university.edu</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a><span class="bu">cd</span> ~/projects/my_project</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="ex">./workflows/my_analysis/start_workflow.sh</span></span></code></pre></div>
+<p>Monitor with <code>squeue -u &lt;user&gt;</code>. Logs are in <code>workflows/my_analysis/log/</code>.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="step-templates">Step Templates<a class="anchor" aria-label="anchor" href="#step-templates"></a>
+</h2>
+<p>slurmworkflow provides seven step templates covering the most common HPC patterns:</p>
+<table class="table">
+<colgroup>
+<col width="50%">
+<col width="50%">
+</colgroup>
+<thead><tr class="header">
+<th>Template</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code><a href="reference/step_tmpl_bash_lines.html">step_tmpl_bash_lines()</a></code></td>
+<td>Run a character vector of bash commands</td>
+</tr>
+<tr class="even">
+<td><code><a href="reference/step_tmpl_bash_script.html">step_tmpl_bash_script()</a></code></td>
+<td>Run a bash script file</td>
+</tr>
+<tr class="odd">
+<td><code><a href="reference/step_tmpl_rscript.html">step_tmpl_rscript()</a></code></td>
+<td>Copy and run an R script (script is embedded in the workflow)</td>
+</tr>
+<tr class="even">
+<td><code><a href="reference/step_tmpl_do_call.html">step_tmpl_do_call()</a></code></td>
+<td>Serialize and run an R function with arguments (like <code>do.call</code>)</td>
+</tr>
+<tr class="odd">
+<td><code><a href="reference/step_tmpl_do_call_script.html">step_tmpl_do_call_script()</a></code></td>
+<td>Run an R script on the HPC with injected variables</td>
+</tr>
+<tr class="even">
+<td><code><a href="reference/step_tmpl_map.html">step_tmpl_map()</a></code></td>
+<td>Run an R function across argument sets as a Slurm array job (like <code>Map</code>)</td>
+</tr>
+<tr class="odd">
+<td><code><a href="reference/step_tmpl_map_script.html">step_tmpl_map_script()</a></code></td>
+<td>Run an R script across argument sets as a Slurm array job</td>
+</tr>
+</tbody>
+</table>
+<p>All R-based templates accept a <code>setup_lines</code> argument for loading modules (R, Python, etc.) before execution.</p>
+<div class="section level3">
+<h3 id="writing-custom-step-templates">Writing Custom Step Templates<a class="anchor" aria-label="anchor" href="#writing-custom-step-templates"></a>
+</h3>
+<p>Step templates are <a href="https://adv-r.hadley.nz/function-factories.html" class="external-link">function factories</a>. A template returns a function that receives <code>instructions_script</code> and <code>wf_vars</code>, writes the bash instructions to run, and optionally returns sbatch option overrides. You can build higher-level templates by wrapping the base ones — this is exactly what <a href="https://github.com/EpiModel/EpiModelHPC" class="external-link">EpiModelHPC</a> does.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="controlling-execution-flow">Controlling Execution Flow<a class="anchor" aria-label="anchor" href="#controlling-execution-flow"></a>
+</h2>
+<p>A running step can alter which step runs next, enabling loops and conditional branching:</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Inside a running R step on the HPC:</span></span>
+<span><span class="va">current</span> <span class="op">&lt;-</span> <span class="fu">slurmworkflow</span><span class="fu">::</span><span class="fu"><a href="reference/get_current_workflow_step.html">get_current_workflow_step</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="va">convergence_not_reached</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="co"># Loop back to this step</span></span>
+<span>  <span class="fu">slurmworkflow</span><span class="fu">::</span><span class="fu"><a href="reference/change_next_workflow_step.html">change_next_workflow_step</a></span><span class="op">(</span><span class="va">current</span><span class="op">)</span></span>
+<span><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
+<span>  <span class="co"># Continue to the next step (default behavior, no call needed)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="sbatch-options">Sbatch Options<a class="anchor" aria-label="anchor" href="#sbatch-options"></a>
+</h2>
+<p>Pass any valid <code>sbatch</code> long-form option as a named list. Options set in <code><a href="reference/create_workflow.html">create_workflow()</a></code> apply to all steps by default; per-step options in <code><a href="reference/add_workflow_step.html">add_workflow_step()</a></code> override them.</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Workflow-level defaults</span></span>
+<span><span class="va">default_sbatch_opts</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"partition"</span> <span class="op">=</span> <span class="st">"compute"</span>, <span class="st">"account"</span> <span class="op">=</span> <span class="st">"my_alloc"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Step-level overrides</span></span>
+<span><span class="va">sbatch_opts</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mem-per-cpu"</span> <span class="op">=</span> <span class="st">"4G"</span>, <span class="st">"cpus-per-task"</span> <span class="op">=</span> <span class="fl">16</span>, <span class="st">"time"</span> <span class="op">=</span> <span class="st">"08:00:00"</span><span class="op">)</span></span></code></pre></div>
+<p>Mutually exclusive options (e.g., <code>mem</code> vs. <code>mem-per-cpu</code> vs. <code>mem-per-gpu</code>) are validated automatically. The <code>partition</code> option is required.</p>
+</div>
+<div class="section level2">
+<h2 id="array-jobs-and-max_array_size">Array Jobs and <code>max_array_size</code>
+<a class="anchor" aria-label="anchor" href="#array-jobs-and-max_array_size"></a>
+</h2>
+<p>Many HPC clusters limit the maximum Slurm array size (commonly 1,000). <code><a href="reference/step_tmpl_map.html">step_tmpl_map()</a></code> and <code><a href="reference/step_tmpl_map_script.html">step_tmpl_map_script()</a></code> accept a <code>max_array_size</code> argument that automatically chunks large arrays into sequential batches:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># 10,000 scenarios, submitted in batches of 500</span></span>
+<span><span class="fu"><a href="reference/step_tmpl_map_script.html">step_tmpl_map_script</a></span><span class="op">(</span></span>
+<span>  r_script <span class="op">=</span> <span class="st">"R/run_sim.R"</span>,</span>
+<span>  scenario_id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">10000</span>,</span>
+<span>  max_array_size <span class="op">=</span> <span class="fl">500</span>,</span>
+<span>  setup_lines <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"module load R/4.3.0"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>slurmworkflow handles the batch sequencing internally — when one batch of array jobs completes, the next batch is automatically submitted.</p>
+</div>
+<div class="section level2">
+<h2 id="start-script-options">Start Script Options<a class="anchor" aria-label="anchor" href="#start-script-options"></a>
+</h2>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="co"># Launch the workflow</span></span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="ex">./workflows/my_analysis/start_workflow.sh</span></span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="co"># Start at step 3 (skip steps 1-2)</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a><span class="ex">./workflows/my_analysis/start_workflow.sh</span> <span class="at">-s</span> 3</span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a><span class="co"># Run from a different working directory</span></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="ex">./workflows/my_analysis/start_workflow.sh</span> <span class="at">-d</span> ~/projects/my_project</span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="integration-with-the-epimodel-ecosystem">Integration with the EpiModel Ecosystem<a class="anchor" aria-label="anchor" href="#integration-with-the-epimodel-ecosystem"></a>
+</h2>
+<p>slurmworkflow is a foundational building block in the <a href="https://www.epimodel.org/" class="external-link">EpiModel</a> ecosystem for mathematical modeling of infectious disease dynamics:</p>
+<pre><code>EpiModel              Core network-based epidemic simulation engine
+    └─▶ EpiModelHPC   HPC extensions with domain-specific step templates
+            └─▶ slurmworkflow   Workflow orchestration on Slurm</code></pre>
+<div class="section level3">
+<h3 id="epimodel">EpiModel<a class="anchor" aria-label="anchor" href="#epimodel"></a>
+</h3>
+<p><a href="https://github.com/EpiModel/EpiModel" class="external-link">EpiModel</a> provides tools for simulating deterministic compartmental models, stochastic individual contact models, and stochastic network models of infectious disease. It uses exponential-family random graph models (ERGMs) from the Statnet suite for network-based simulations.</p>
+</div>
+<div class="section level3">
+<h3 id="epimodelhpc">EpiModelHPC<a class="anchor" aria-label="anchor" href="#epimodelhpc"></a>
+</h3>
+<p><a href="https://github.com/EpiModel/EpiModelHPC" class="external-link">EpiModelHPC</a> extends slurmworkflow with higher-level, domain-specific step templates for running EpiModel simulations at scale:</p>
+<table class="table">
+<colgroup>
+<col width="33%">
+<col width="33%">
+<col width="33%">
+</colgroup>
+<thead><tr class="header">
+<th>EpiModelHPC Template</th>
+<th>Wraps</th>
+<th>Purpose</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code>step_tmpl_renv_restore()</code></td>
+<td><code>step_tmpl_bash_lines</code></td>
+<td>Git pull + <code>renv::restore()</code> on HPC</td>
+</tr>
+<tr class="even">
+<td><code>step_tmpl_netsim_scenarios()</code></td>
+<td><code>step_tmpl_map</code></td>
+<td>Run network simulations across scenarios as array jobs</td>
+</tr>
+<tr class="odd">
+<td><code>step_tmpl_merge_netsim_scenarios()</code></td>
+<td><code>step_tmpl_do_call</code></td>
+<td>Merge per-batch simulation outputs into one file per scenario</td>
+</tr>
+<tr class="even">
+<td><code>step_tmpl_merge_netsim_scenarios_tibble()</code></td>
+<td><code>step_tmpl_do_call</code></td>
+<td>Merge and convert results to tidy tibble format</td>
+</tr>
+<tr class="odd">
+<td><code>step_tmpl_netsim_swfcalib_output()</code></td>
+<td><code>step_tmpl_map</code></td>
+<td>Run simulations using calibrated parameters from swfcalib</td>
+</tr>
+</tbody>
+</table>
+<p>EpiModelHPC also provides cluster configuration presets (<code>swf_configs_rsph()</code>, <code>swf_configs_hyak()</code>) that return ready-made sbatch options, renv settings, and module-loading lines for specific HPCs.</p>
+</div>
+<div class="section level3">
+<h3 id="epimodelhiv-template-workflow-example">EpiModelHIV-Template Workflow Example<a class="anchor" aria-label="anchor" href="#epimodelhiv-template-workflow-example"></a>
+</h3>
+<p>The <a href="https://github.com/EpiModel/EpiModelHIV-Template" class="external-link">EpiModelHIV-Template</a> repo demonstrates how slurmworkflow is used in production HIV research projects. Each major analysis phase has its own <code>workflow-*.R</code> file. Here is a representative workflow for running intervention scenarios end-to-end:</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># R/F-intervention_scenarios/workflow-intervention.R (simplified)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://epimodel.github.io/slurmworkflow/">slurmworkflow</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">EpiModelHPC</span><span class="op">)</span></span>
+<span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="st">"R/shared_variables.R"</span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="st">"R/hpc_configs.R"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Step 1: Create workflow + automatic renv restore step</span></span>
+<span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu">make_em_workflow</span><span class="op">(</span><span class="st">"intervention"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Step 2: Run intervention scenarios as a massive Slurm array job</span></span>
+<span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu">step_tmpl_netsim_scenarios</span><span class="op">(</span></span>
+<span>    <span class="va">path_to_est</span>, <span class="va">param</span>, <span class="va">init</span>, <span class="va">control</span>,</span>
+<span>    scenarios_list <span class="op">=</span> <span class="va">scenarios_list</span>,</span>
+<span>    output_dir <span class="op">=</span> <span class="va">scenarios_dir</span>,</span>
+<span>    n_rep <span class="op">=</span> <span class="fl">32</span>,</span>
+<span>    n_cores <span class="op">=</span> <span class="va">max_cores</span>,</span>
+<span>    max_array_size <span class="op">=</span> <span class="fl">500</span>,</span>
+<span>    setup_lines <span class="op">=</span> <span class="va">hpc_node_setup</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    <span class="st">"cpus-per-task"</span> <span class="op">=</span> <span class="va">max_cores</span>,</span>
+<span>    <span class="st">"time"</span> <span class="op">=</span> <span class="st">"04:00:00"</span>,</span>
+<span>    <span class="st">"mem-per-cpu"</span> <span class="op">=</span> <span class="st">"5G"</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Step 3: Merge distributed results into tidy tibbles</span></span>
+<span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu">step_tmpl_merge_netsim_scenarios_tibble</span><span class="op">(</span></span>
+<span>    sim_dir <span class="op">=</span> <span class="va">scenarios_dir</span>,</span>
+<span>    output_dir <span class="op">=</span> <span class="va">merged_dir</span>,</span>
+<span>    steps_to_keep <span class="op">=</span> <span class="cn">Inf</span>,</span>
+<span>    setup_lines <span class="op">=</span> <span class="va">hpc_node_setup</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mem"</span> <span class="op">=</span> <span class="st">"0"</span>, <span class="st">"time"</span> <span class="op">=</span> <span class="st">"04:00:00"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Step 4: Generate result tables</span></span>
+<span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu"><a href="reference/step_tmpl_do_call_script.html">step_tmpl_do_call_script</a></span><span class="op">(</span></span>
+<span>    r_script <span class="op">=</span> <span class="st">"R/F-intervention_scenarios/4-tables.R"</span>,</span>
+<span>    args <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>hpc_context <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    setup_lines <span class="op">=</span> <span class="va">hpc_node_setup</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mem"</span> <span class="op">=</span> <span class="st">"16G"</span>, <span class="st">"time"</span> <span class="op">=</span> <span class="st">"01:00:00"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Step 5: Generate plots</span></span>
+<span><span class="va">wf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_workflow_step.html">add_workflow_step</a></span><span class="op">(</span></span>
+<span>  wf_summary <span class="op">=</span> <span class="va">wf</span>,</span>
+<span>  step_tmpl <span class="op">=</span> <span class="fu"><a href="reference/step_tmpl_do_call_script.html">step_tmpl_do_call_script</a></span><span class="op">(</span></span>
+<span>    r_script <span class="op">=</span> <span class="st">"R/F-intervention_scenarios/5-plots.R"</span>,</span>
+<span>    args <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>hpc_context <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
+<span>    setup_lines <span class="op">=</span> <span class="va">hpc_node_setup</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  sbatch_opts <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mem"</span> <span class="op">=</span> <span class="st">"16G"</span>, <span class="st">"time"</span> <span class="op">=</span> <span class="st">"01:00:00"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The <code>make_em_workflow()</code> helper (defined in the template project) wraps <code><a href="reference/create_workflow.html">create_workflow()</a></code> with project defaults and always adds an <code>EpiModelHPC::step_tmpl_renv_restore()</code> as the first step. This pattern supports two levels of parallelization: Slurm array jobs distribute scenarios across nodes, while each node runs ~32 simulations in parallel internally.</p>
+<p>Typical workflow pipelines in EpiModelHIV projects:</p>
+<table class="table">
+<colgroup>
+<col width="50%">
+<col width="50%">
+</colgroup>
+<thead><tr class="header">
+<th>Pipeline</th>
+<th>Steps</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><strong>Network estimation</strong></td>
+<td>renv restore, estimate, diagnostics</td>
+</tr>
+<tr class="even">
+<td><strong>Scenario simulations</strong></td>
+<td>renv restore, netsim scenarios, merge results</td>
+</tr>
+<tr class="odd">
+<td><strong>Intervention analysis</strong></td>
+<td>renv restore, netsim scenarios, merge, tables, plots</td>
+</tr>
+<tr class="even">
+<td><strong>Calibration (swfcalib)</strong></td>
+<td>renv restore, propose params, run batches, evaluate, update, simulate, merge, plot</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section level2">
+<h2 id="workflow-directory-structure">Workflow Directory Structure<a class="anchor" aria-label="anchor" href="#workflow-directory-structure"></a>
+</h2>
+<p>When you create a workflow, slurmworkflow generates this directory structure:</p>
+<pre><code>workflows/my_analysis/
+    start_workflow.sh           Entry point — run this on the HPC
+    workflow.yaml               Metadata: steps, sbatch options
+    log/                        Job stdout/stderr logs
+    SWF/
+        controller.sh           Chains steps via sbatch dependencies
+        step.sh                 Template for step execution
+        lib.sh                  Shared bash functions
+        steps/
+            1/
+                job.sh          Sbatch script with #SBATCH directives
+                instructions.sh Actual commands for this step
+            2/
+                ...</code></pre>
+</div>
+<div class="section level2">
+<h2 id="tested-hpcs">Tested HPCs<a class="anchor" aria-label="anchor" href="#tested-hpcs"></a>
+</h2>
+<ul>
+<li><a href="https://sph.emory.edu/research/labs/index.html" class="external-link">Emory RSPH HPC</a></li>
+<li><a href="https://hyak.uw.edu/" class="external-link">UW HYAK HPC</a></li>
+</ul>
+<p>Any Slurm-equipped cluster should work.</p>
+</div>
+<div class="section level2">
+<h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>
+</h2>
+<ul>
+<li>
+<a href="https://epimodel.github.io/slurmworkflow/articles/slurmworkflow.html">Package vignette</a> — walkthrough of a 4-step workflow with loops, array jobs, and direct function calls</li>
+<li>
+<a href="https://epimodel.github.io/slurmworkflow/reference/">Reference manual</a> — full function documentation</li>
+</ul>
+</div>
+<div class="section level2">
+<h2 id="related-packages">Related Packages<a class="anchor" aria-label="anchor" href="#related-packages"></a>
+</h2>
+<ul>
+<li>
+<a href="https://github.com/EpiModel/EpiModel" class="external-link">EpiModel</a> — Mathematical modeling of infectious disease dynamics</li>
+<li>
+<a href="https://github.com/EpiModel/EpiModelHPC" class="external-link">EpiModelHPC</a> — HPC extensions for EpiModel (builds on slurmworkflow)</li>
+<li>
+<a href="https://github.com/EpiModel/EpiModelHIV-Template" class="external-link">EpiModelHIV-Template</a> — Template for HIV research projects</li>
+<li>
+<a href="https://github.com/EpiModel/swfcalib" class="external-link">swfcalib</a> — Automated calibration system built on slurmworkflow</li>
+</ul>
+</div>
+<div class="section level2">
+<h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
+</h2>
+<p>If you use slurmworkflow in your research, please cite the EpiModel suite:</p>
+<blockquote>
+<p>Jenness SM, Goodreau SM, Morris M (2018). “EpiModel: An R Package for Mathematical Modeling of Infectious Disease over Networks.” <em>Journal of Statistical Software</em>, 84(8), 1-47. doi: <a href="https://doi.org/10.18637/jss.v084.i08" class="external-link">10.18637/jss.v084.i08</a></p>
+</blockquote>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="license">
@@ -92,10 +494,9 @@
 <div class="dev-status">
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
-<li><a href="https://CRAN.R-project.org/package=slurmworkflow" class="external-link"><img src="https://www.r-pkg.org/badges/version/slurmworkflow" alt="CRAN status"></a></li>
-<li><a href="https://github.com/EpiModel/slurmworkflow/actions" class="external-link"><img src="https://github.com/EpiModel/slurmworkflow/workflows/R-CMD-check/badge.svg" alt="R-CMD-check"></a></li>
-<li><a href="https://codecov.io/gh/EpiModel/slurmworkflow" class="external-link"><img src="https://codecov.io/gh/EpiModel/slurmworkflow/branch/main/graph/badge.svg?token=eo2r0HeP8Z" alt="codecov"></a></li>
+<li><a href="https://lifecycle.r-lib.org/articles/stages.html#stable" class="external-link"><img src="https://img.shields.io/badge/lifecycle-stable-brightgreen.svg" alt="Lifecycle: stable"></a></li>
+<li><a href="https://github.com/EpiModel/slurmworkflow/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/EpiModel/slurmworkflow/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://codecov.io/gh/EpiModel/slurmworkflow" class="external-link"><img src="https://codecov.io/gh/EpiModel/slurmworkflow/branch/main/graph/badge.svg" alt="codecov"></a></li>
 </ul>
 </div>
 
@@ -108,7 +509,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer>
