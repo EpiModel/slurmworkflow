@@ -3,7 +3,7 @@ pkgdown: 2.2.0
 pkgdown_sha: ~
 articles:
   slurmworkflow: slurmworkflow.html
-last_built: 2026-03-29T19:37Z
+last_built: 2026-03-30T14:29Z
 urls:
   reference: https://epimodel.github.io/slurmworkflow/reference
   article: https://epimodel.github.io/slurmworkflow/articles
