@@ -27,6 +27,7 @@ submission.
 ## Installation
 
 ``` r
+
 # install.packages("remotes")
 remotes::install_github("EpiModel/slurmworkflow")
 ```
@@ -36,6 +37,7 @@ remotes::install_github("EpiModel/slurmworkflow")
 ### 1. Create a workflow
 
 ``` r
+
 library(slurmworkflow)
 
 wf <- create_workflow(
@@ -56,6 +58,7 @@ shell scripts and metadata needed to run on the HPC.
 **Run bash commands:**
 
 ``` r
+
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_bash_lines(c(
@@ -70,6 +73,7 @@ wf <- add_workflow_step(
 **Run an R script with arguments:**
 
 ``` r
+
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_do_call_script(
@@ -84,6 +88,7 @@ wf <- add_workflow_step(
 **Run parallel array jobs (like `Map`):**
 
 ``` r
+
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_map_script(
@@ -121,15 +126,15 @@ Monitor with `squeue -u <user>`. Logs are in
 slurmworkflow provides seven step templates covering the most common HPC
 patterns:
 
-| Template                                                                                                       | Description                                                              |
-|----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| [`step_tmpl_bash_lines()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_bash_lines.md)         | Run a character vector of bash commands                                  |
-| [`step_tmpl_bash_script()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_bash_script.md)       | Run a bash script file                                                   |
-| [`step_tmpl_rscript()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_rscript.md)               | Copy and run an R script (script is embedded in the workflow)            |
-| [`step_tmpl_do_call()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_do_call.md)               | Serialize and run an R function with arguments (like `do.call`)          |
-| [`step_tmpl_do_call_script()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_do_call_script.md) | Run an R script on the HPC with injected variables                       |
-| [`step_tmpl_map()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_map.md)                       | Run an R function across argument sets as a Slurm array job (like `Map`) |
-| [`step_tmpl_map_script()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_map_script.md)         | Run an R script across argument sets as a Slurm array job                |
+| Template | Description |
+|----|----|
+| [`step_tmpl_bash_lines()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_bash_lines.md) | Run a character vector of bash commands |
+| [`step_tmpl_bash_script()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_bash_script.md) | Run a bash script file |
+| [`step_tmpl_rscript()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_rscript.md) | Copy and run an R script (script is embedded in the workflow) |
+| [`step_tmpl_do_call()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_do_call.md) | Serialize and run an R function with arguments (like `do.call`) |
+| [`step_tmpl_do_call_script()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_do_call_script.md) | Run an R script on the HPC with injected variables |
+| [`step_tmpl_map()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_map.md) | Run an R function across argument sets as a Slurm array job (like `Map`) |
+| [`step_tmpl_map_script()`](https://epimodel.github.io/slurmworkflow/reference/step_tmpl_map_script.md) | Run an R script across argument sets as a Slurm array job |
 
 All R-based templates accept a `setup_lines` argument for loading
 modules (R, Python, etc.) before execution.
@@ -150,6 +155,7 @@ A running step can alter which step runs next, enabling loops and
 conditional branching:
 
 ``` r
+
 # Inside a running R step on the HPC:
 current <- slurmworkflow::get_current_workflow_step()
 
@@ -170,6 +176,7 @@ apply to all steps by default; per-step options in
 override them.
 
 ``` r
+
 # Workflow-level defaults
 default_sbatch_opts = list("partition" = "compute", "account" = "my_alloc")
 
@@ -191,6 +198,7 @@ accept a `max_array_size` argument that automatically chunks large
 arrays into sequential batches:
 
 ``` r
+
 # 10,000 scenarios, submitted in batches of 500
 step_tmpl_map_script(
   r_script = "R/run_sim.R",
@@ -240,13 +248,13 @@ suite for network-based simulations.
 slurmworkflow with higher-level, domain-specific step templates for
 running EpiModel simulations at scale:
 
-| EpiModelHPC Template                        | Wraps                  | Purpose                                                       |
-|---------------------------------------------|------------------------|---------------------------------------------------------------|
-| `step_tmpl_renv_restore()`                  | `step_tmpl_bash_lines` | Git pull + `renv::restore()` on HPC                           |
-| `step_tmpl_netsim_scenarios()`              | `step_tmpl_map`        | Run network simulations across scenarios as array jobs        |
-| `step_tmpl_merge_netsim_scenarios()`        | `step_tmpl_do_call`    | Merge per-batch simulation outputs into one file per scenario |
-| `step_tmpl_merge_netsim_scenarios_tibble()` | `step_tmpl_do_call`    | Merge and convert results to tidy tibble format               |
-| `step_tmpl_netsim_swfcalib_output()`        | `step_tmpl_map`        | Run simulations using calibrated parameters from swfcalib     |
+| EpiModelHPC Template | Wraps | Purpose |
+|----|----|----|
+| `step_tmpl_renv_restore()` | `step_tmpl_bash_lines` | Git pull + `renv::restore()` on HPC |
+| `step_tmpl_netsim_scenarios()` | `step_tmpl_map` | Run network simulations across scenarios as array jobs |
+| `step_tmpl_merge_netsim_scenarios()` | `step_tmpl_do_call` | Merge per-batch simulation outputs into one file per scenario |
+| `step_tmpl_merge_netsim_scenarios_tibble()` | `step_tmpl_do_call` | Merge and convert results to tidy tibble format |
+| `step_tmpl_netsim_swfcalib_output()` | `step_tmpl_map` | Run simulations using calibrated parameters from swfcalib |
 
 EpiModelHPC also provides cluster configuration presets
 (`swf_configs_rsph()`, `swf_configs_hyak()`) that return ready-made
@@ -263,6 +271,7 @@ Here is a representative workflow for running intervention scenarios
 end-to-end:
 
 ``` r
+
 # R/F-intervention_scenarios/workflow-intervention.R (simplified)
 library(slurmworkflow)
 library(EpiModelHPC)
@@ -337,11 +346,11 @@ internally.
 
 Typical workflow pipelines in EpiModelHIV projects:
 
-| Pipeline                   | Steps                                                                              |
-|----------------------------|------------------------------------------------------------------------------------|
-| **Network estimation**     | renv restore, estimate, diagnostics                                                |
-| **Scenario simulations**   | renv restore, netsim scenarios, merge results                                      |
-| **Intervention analysis**  | renv restore, netsim scenarios, merge, tables, plots                               |
+| Pipeline | Steps |
+|----|----|
+| **Network estimation** | renv restore, estimate, diagnostics |
+| **Scenario simulations** | renv restore, netsim scenarios, merge results |
+| **Intervention analysis** | renv restore, netsim scenarios, merge, tables, plots |
 | **Calibration (swfcalib)** | renv restore, propose params, run batches, evaluate, update, simulate, merge, plot |
 
 ## Workflow Directory Structure

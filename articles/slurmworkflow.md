@@ -37,6 +37,7 @@ HPC.
 ## Creating a new workflow
 
 ``` r
+
 library(slurmworkflow)
 
 wf <- create_workflow(
@@ -67,6 +68,7 @@ The first step that we use on most of our *workflows* ensures that our
 local project and the HPC are in sync.
 
 ``` r
+
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_bash_lines(c(
@@ -119,6 +121,7 @@ to manage our modules. Therefore, we store the lines used to setup `R`
 on the HPC in a variable as it will be used by all `R` *step templates*.
 
 ``` r
+
 setup_lines <- c(
   ". /projects/epimodel/spack/share/spack/setup-env.sh",
   "spack load r@4.2.1"
@@ -130,6 +133,7 @@ setup_lines <- c(
 Our next step will run the following script on the HPC.
 
 ``` r
+
 # filename: R/01-test_do_call.R
 cat(paste0("var1 = ", var1, ", var2 = ", var2))
 
@@ -159,6 +163,7 @@ is not called and the workflow will just continue to the next *step*.
 Let’s now see how we add this script as a workflow step.
 
 ``` r
+
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_do_call_script(
@@ -210,6 +215,7 @@ array job where each element of input are processed in parallel.
 First let’s take a look at the script to be run.
 
 ``` r
+
 # filename: R/02-test_map.R
 library(future.apply)
 plan(multicore, workers = ncores)
@@ -236,6 +242,7 @@ In this script we will print in parallel the message over `ncores`.
 Now for the addition of the step.
 
 ``` r
+
 cores_to_use <- 2
 
 wf <- add_workflow_step(
@@ -303,6 +310,7 @@ do exactly that for one-of functions and
 [`Map()`](https://rdrr.io/r/base/funprog.html)s.
 
 ``` r
+
 wf <- add_workflow_step(
   wf_summary = wf,
   step_tmpl = step_tmpl_do_call(
