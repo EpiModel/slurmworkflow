@@ -37,7 +37,7 @@ if (array_id == array_max) {
   }
 }
 
-# Create the
+# Create the `swf__tmpl_elts` for this array job
 swf__tmpl_elts[["args"]] <- c(
   lapply(swf__tmpl_elts[["dots"]], function(x) x[[corrected_id]]),
   swf__tmpl_elts[["MoreArgs"]]
@@ -54,6 +54,10 @@ do.call(
   what = swf__tmpl_elts[["FUN"]],
   args = swf__tmpl_elts[["args"]]
 )
+
+# Display the Warnings ---------------------------------------------------------
+message("\n###################\n")
+message(paste0(capture.output(summary(warnings())), collapse = "\n"))
 
 # Time Calulation --------------------------------------------------------------
 message(

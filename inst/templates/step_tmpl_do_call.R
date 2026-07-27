@@ -18,6 +18,10 @@ do.call(
   args = swf__tmpl_elts[["args"]]
 )
 
+# Display the Warnings ---------------------------------------------------------
+message("\n###################\n")
+message(paste0(capture.output(summary(warnings())), collapse = "\n"))
+
 # Time Calulation --------------------------------------------------------------
 message(
   "\n###################\n",
