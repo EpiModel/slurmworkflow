@@ -25,6 +25,36 @@ function make_env_cur_vars {
   export SWF__INSTRUCTIONS_SCRIPT="$SWF__CUR_DIR/instructions.sh"
 }
 
+# Archive old log files for a step before resubmitting it.
+# Moves .out files with a job ID lower than the current one to log/archive/.
+# Arguments:
+#   $1 - step name (e.g., "wf_name_step1")
+#   $2 - current SLURM job ID (files with lower IDs are considered old)
+#   $3 - log directory path
+function archive_old_logs {
+  local step_name="$1"
+  local current_jobid="$2"
+  local log_dir="$3"
+  local archive_dir="$log_dir/archive"
+
+  for f in "$log_dir"/${step_name}_*.out; do
+    [ -f "$f" ] || continue
+
+    local basename
+    basename=$(basename "$f")
+    # Remove the step_name_ prefix and .out suffix to get JOBID_TASKID
+    local remainder="${basename#${step_name}_}"
+    remainder="${remainder%.out}"
+    # Extract the job ID (part before the first _)
+    local file_jobid="${remainder%%_*}"
+
+    if [[ "$file_jobid" =~ ^[0-9]+$ ]] && [ "$file_jobid" -lt "$current_jobid" ]; then
+      mkdir -p "$archive_dir"
+      mv "$f" "$archive_dir/"
+    fi
+  done
+}
+
 # convert CRLF endings to LF - `|| echo ""` prevents error when none is found
 function fix_crlf_files {
   local CRLF_FILES=$(find "$1" -type f | xargs file -F "::" | grep CRLF || echo "")
