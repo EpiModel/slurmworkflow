@@ -68,6 +68,9 @@ then
   mkdir -p "$SWF_LOG_DIR"
 fi
 
+# Archive the logs of earlier runs for the steps about to be run again
+archive_old_logs "$FIRST_STEP"
+
 # Convert Windows CRLF endings to LF
 fix_crlf_files "$SWF_ROOT"
 
