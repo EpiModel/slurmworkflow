@@ -21,7 +21,7 @@ fi
 # The payload is executed in a child bash, not sourced. It inherits the
 # exported SWF_* variables and the process environment, but cannot change this
 # shell's cwd, options, PATH, functions, or exit before the hand-off.
-# See SWF/PAYLOAD_CONTRACT.md for the full contract.
+# See the "Step payload contract" vignette in the slurmworkflow documentation.
 # >>> SWF_PAYLOAD_INVOCATION >>>
 set +e
 env -u BASH_ENV "${BASH:-/bin/bash}" -e -- "$SWF__INSTRUCTIONS_SCRIPT"

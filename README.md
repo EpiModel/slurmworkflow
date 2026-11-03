@@ -157,11 +157,10 @@ only affect the child. A non-zero exit fails the step and prevents the hand-off;
 `exit 0` means success and continues. Top-level `return` is not valid in a
 payload.
 
-The full shell-level contract is copied into every workflow as
-`SWF/PAYLOAD_CONTRACT.md` (template:
-[`inst/templates/workflow/SWF/PAYLOAD_CONTRACT.md`](inst/templates/workflow/SWF/PAYLOAD_CONTRACT.md)).
-It lists the exported variables, the exit semantics, `setup_lines` behavior,
-and the next-step files.
+The full shell-level contract is documented in the
+[Step payload contract vignette](vignettes/payload-contract.Rmd). It lists the
+exported variables, the exit semantics, `setup_lines` behavior, and the
+next-step files.
 
 ## Controlling Execution Flow
 

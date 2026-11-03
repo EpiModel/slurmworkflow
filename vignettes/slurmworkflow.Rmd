@@ -329,7 +329,7 @@ functions, traps, or `exit` stay in the child.
   submitted after the payload exits.
 
 The full contract, including the exported variable list and the next-step files,
-is copied into every workflow as `SWF/PAYLOAD_CONTRACT.md`.
+is documented in the [Step payload contract](payload-contract.html) vignette.
 
 ## Using the workflow on an HPC
 
