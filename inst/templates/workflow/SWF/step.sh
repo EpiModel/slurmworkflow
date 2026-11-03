@@ -10,10 +10,29 @@ SWF__JOB_ID=${SLURM_JOB_ID:-$SLURM_ARRAY_JOB_ID}
 export SWF_NEXTSTEP_FILE="$SWF_CUR_TMP/$SWF__JOB_ID.nextstep"
 export SWF_NEXTSTEP_OPTS_FILE="$SWF_CUR_TMP/$SWF__JOB_ID.nextstep_opts"
 
-# This file contains only boilerplate code for the workflow system. The
-# instructions to be run for the job are in an external script. The script is
-# sourced and not executed so it shares the same shell.
-source "$SWF__INSTRUCTIONS_SCRIPT"
+# The controller is submitted by this shell after the payload. The payload's
+# child shell cannot provide `sbatch` to this parent shell, so check it here.
+if ! command -v sbatch > /dev/null 2>&1
+then
+    echo "sbatch not found in the step environment; cannot submit the controller." >&2
+    exit 127
+fi
+
+# The payload is executed in a child bash, not sourced. It inherits the
+# exported SWF_* variables and the process environment, but cannot change this
+# shell's cwd, options, PATH, functions, or exit before the hand-off.
+# See SWF/PAYLOAD_CONTRACT.md for the full contract.
+# >>> SWF_PAYLOAD_INVOCATION >>>
+set +e
+env -u BASH_ENV "${BASH:-/bin/bash}" -e -- "$SWF__INSTRUCTIONS_SCRIPT"
+SWF__RC=$?
+set -e
+if (( SWF__RC != 0 ))
+then
+    echo "Step payload failed with exit code $SWF__RC: $SWF__INSTRUCTIONS_SCRIPT" >&2
+    exit "$SWF__RC"
+fi
+# <<< SWF_PAYLOAD_INVOCATION <<<
 
 # The "controller" script is run in between each step.
 # It decides wether or not there are still steps to be run.
