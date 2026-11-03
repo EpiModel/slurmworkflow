@@ -63,6 +63,7 @@ would, with `SLURM_JOB_ID=1000` and no array variables.
 | `var` | overwrites `SWF__CTRL_SCRIPT` |
 | `nonexport` | prints `$SWF__JOB_ID` (not exported) |
 | `nextstep` | writes `3` to `$SWF_NEXTSTEP_FILE` |
+| `array_env` | runs as array task 2/2 and prints `SLURM_ARRAY_*` and `SWF__ARRAY_OFFSET` |
 
 ## Current results
 
@@ -82,6 +83,7 @@ return         rc=0 h=1               rc=2 h=0               rc=0 h=1           
 var            rc=0 h=1 ctrl=/bogus   rc=0 h=1 ctrl=controller rc=0 h=1 ctrl=controller rc=0 h=1 ctrl=controller
 nonexport      rc=0 h=1 var=visible   rc=0 h=1 var=hidden    rc=0 h=1 var=visible   rc=0 h=1 var=hidden
 nextstep       rc=0 h=1 next=3        rc=0 h=1 next=3        rc=0 h=1 next=3        rc=0 h=1 next=3
+array_env      rc=0 h=1 env=ok        rc=0 h=1 env=ok        rc=0 h=1 env=ok        rc=0 h=1 env=ok
 ```
 
 The `default` variant produces the same matrix as `bash-rc`.

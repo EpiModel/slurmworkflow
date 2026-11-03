@@ -39,7 +39,7 @@ tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/swf-step-shell.XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
 variants=(source bash subshell bash-rc default)
-scenarios=(ok exit0 exit1 exec cd set_u path function return var nonexport nextstep)
+scenarios=(ok exit0 exit1 exec cd set_u path function return var nonexport nextstep array_env)
 
 fakebin="$tmp_root/bin"
 mkdir -p "$fakebin"
@@ -201,6 +201,16 @@ printf '3\n' > "$SWF_NEXTSTEP_FILE"
 echo "payload nextstep"
 EOF
             ;;
+        array_env)
+            cat > "$file" <<'EOF'
+printf 'TASK=%s MAX=%s JOB=%s COUNT=%s OFFSET=%s\n' \
+    "${SLURM_ARRAY_TASK_ID-<unset>}" \
+    "${SLURM_ARRAY_TASK_MAX-<unset>}" \
+    "${SLURM_ARRAY_JOB_ID-<unset>}" \
+    "${SLURM_ARRAY_TASK_COUNT-<unset>}" \
+    "${SWF__ARRAY_OFFSET-<unset>}"
+EOF
+            ;;
         *)
             echo "Unknown scenario: $scenario" >&2
             return 1
@@ -235,12 +245,26 @@ function run_case {
 
     : > "$dir/sbatch.log"
 
+    local -a slurm_env=(
+        -u SLURM_ARRAY_TASK_ID
+        -u SLURM_ARRAY_TASK_MAX
+        -u SLURM_ARRAY_JOB_ID
+        -u SLURM_ARRAY_TASK_COUNT
+        -u SWF__ARRAY_OFFSET
+    )
+    if [[ "$scenario" == "array_env" ]]; then
+        slurm_env=(
+            SLURM_ARRAY_TASK_ID=2
+            SLURM_ARRAY_TASK_MAX=2
+            SLURM_ARRAY_JOB_ID=5000
+            SLURM_ARRAY_TASK_COUNT=2
+            SWF__ARRAY_OFFSET=5
+        )
+    fi
+
     (
         cd "$project" || exit 99
-        env -u SLURM_ARRAY_TASK_ID \
-            -u SLURM_ARRAY_TASK_MAX \
-            -u SLURM_ARRAY_JOB_ID \
-            -u SLURM_ARRAY_TASK_COUNT \
+        env "${slurm_env[@]}" \
             TMP="$dir/tmp" \
             SBATCH_LOG="$dir/sbatch.log" \
             SLURM_JOB_ID=1000 \
@@ -295,6 +319,13 @@ function cell {
         cd)       text+=" cwd=${CWD[$key]}" ;;
         var)      text+=" ctrl=${CTRL[$key]}" ;;
         nextstep) text+=" next=${NEXT[$key]}" ;;
+        array_env)
+            if grep -q '^TASK=2 MAX=2 JOB=5000 COUNT=2 OFFSET=5$' <<< "${STDOUT[$key]}"; then
+                text+=" env=ok"
+            else
+                text+=" env=BAD"
+            fi
+            ;;
         nonexport)
             if grep -q 'SWF__JOB_ID=1000' <<< "${STDOUT[$key]}"; then
                 text+=" var=visible"
@@ -365,6 +396,10 @@ for variant in "${variants[@]}"; do
     check "$variant:exit1 handoff" "${HANDOFF[$variant:exit1]}" "0"
     check "$variant:nextstep handoff" "${HANDOFF[$variant:nextstep]}" "1"
     check "$variant:nextstep next" "${NEXT[$variant:nextstep]}" "3"
+    check "$variant:array_env handoff" "${HANDOFF[$variant:array_env]}" "1"
+    check "$variant:array_env env" \
+        "$(grep '^TASK=' <<< "${STDOUT[$variant:array_env]}")" \
+        "TASK=2 MAX=2 JOB=5000 COUNT=2 OFFSET=5"
 done
 
 # Current source: user code runs in the framework shell.
