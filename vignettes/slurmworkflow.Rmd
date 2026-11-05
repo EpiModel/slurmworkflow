@@ -326,7 +326,10 @@ functions, traps, or `exit` stay in the child.
 - `setup_lines` run in the same child before the payload, so modules and
   environment changes are visible to the payload.
 - `sbatch` must be available in the parent shell, because the controller is
-  submitted after the payload exits.
+  submitted after the payload exits. Sites that load the Slurm client through a
+  module can put `module load slurm` in `SWF/parent_setup.sh`.
+- The parent shell forwards `TERM`, `USR1`, and `USR2` to the payload child and
+  waits for it to exit, so payload traps have time to run.
 
 The full contract, including the exported variable list and the next-step files,
 is documented in the [Step payload contract](payload-contract.html) vignette.

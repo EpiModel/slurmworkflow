@@ -155,12 +155,14 @@ the framework shell. The payload inherits the exported `SWF_*` variables and
 Slurm variables, but `cd`, `set`, `trap`, `PATH`, shell functions, and `exit`
 only affect the child. A non-zero exit fails the step and prevents the hand-off;
 `exit 0` means success and continues. Top-level `return` is not valid in a
-payload.
+payload. The parent shell forwards `TERM`, `USR1`, and `USR2` to the child and
+waits for it to exit. Sites that load `sbatch` through a module can create
+`SWF/parent_setup.sh` so the hand-off shell can find it.
 
 The full shell-level contract is documented in the
-[Step payload contract vignette](vignettes/payload-contract.Rmd). It lists the
-exported variables, the exit semantics, `setup_lines` behavior, and the
-next-step files.
+[Step payload contract vignette](https://epimodel.github.io/slurmworkflow/articles/payload-contract.html).
+It lists the exported variables, the exit semantics, `setup_lines` behavior, and
+the next-step files.
 
 ## Controlling Execution Flow
 

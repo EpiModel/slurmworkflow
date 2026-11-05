@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
 #
-# Local tests for running a step payload in a new shell.
+# Local tests for the default step payload execution.
 #
 # The harness runs the real step template (`inst/templates/workflow/SWF/step.sh`)
-# with a stub `sbatch`, once per variant:
+# and `inst/templates/step_dir/job.sh` with a stub `sbatch`. It asserts the
+# invariants for the child-shell behavior.
 #
-#   source     today's behaviour: source the payload in the framework shell
-#   bash       run the payload with `bash -e -- instructions.sh`
-#   subshell   run `( set -e; source instructions.sh )`
-#   bash-rc    `bash -e` plus `set +e`/`SWF__RC`/`set -e` around the child
-#
-# It reports a behaviour matrix and asserts the invariants we care about.
 # No Slurm, R, or network access is required.
 #
 # Usage, from the repository root:
@@ -18,6 +13,11 @@
 #   bash tests/runtime/test-step-shell.sh --verbose
 
 set -uo pipefail
+
+if (( BASH_VERSINFO[0] < 4 )); then
+    echo "This test harness requires bash 4 or later." >&2
+    exit 2
+fi
 
 VERBOSE=0
 [[ "${1:-}" == "--verbose" ]] && VERBOSE=1
@@ -38,8 +38,7 @@ fi
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/swf-step-shell.XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
-variants=(source bash subshell bash-rc default)
-scenarios=(ok exit0 exit1 exec cd set_u path function return var nonexport nextstep array_env)
+scenarios=(ok exit0 exit1 exec cd set_u path function return var nonexport nextstep array_env bash_env signal sbatch_missing)
 
 fakebin="$tmp_root/bin"
 mkdir -p "$fakebin"
@@ -59,77 +58,6 @@ cat > "$fakebin/sbatch" <<'EOF'
 echo "Submitted batch job 999"
 EOF
 chmod +x "$fakebin/sbatch"
-
-# Replace the block between the two SWF_PAYLOAD_INVOCATION markers.
-function replace_payload_block {
-    local file="$1"
-    local replacement_file="$2"
-    local tmp="$file.tmp"
-
-    awk -v replfile="$replacement_file" '
-        /^# >>> SWF_PAYLOAD_INVOCATION >>>$/ {
-            print
-            while ((getline line < replfile) > 0) print line
-            close(replfile)
-            inblock = 1
-            starts++
-            next
-        }
-        /^# <<< SWF_PAYLOAD_INVOCATION <<<$/ {
-            inblock = 0
-            print
-            ends++
-            next
-        }
-        inblock { next }
-        { print }
-        END { exit(starts == 1 && ends == 1 ? 0 : 1) }
-    ' "$file" > "$tmp" || {
-        echo "Failed to replace the payload block in $file" >&2
-        rm -f "$tmp"
-        return 1
-    }
-    mv "$tmp" "$file"
-}
-
-function patch_step_variant {
-    local variant="$1"
-    local step="$2"
-    local repl="$tmp_root/replacement.$variant"
-
-    case "$variant" in
-        default)
-            return 0
-            ;;
-        source)
-            printf '%s\n' 'source "$SWF__INSTRUCTIONS_SCRIPT"' > "$repl"
-            ;;
-        bash)
-            printf '%s\n' 'env -u BASH_ENV "${BASH:-/bin/bash}" -e -- "$SWF__INSTRUCTIONS_SCRIPT"' > "$repl"
-            ;;
-        subshell)
-            printf '%s\n' '( set -e; source "$SWF__INSTRUCTIONS_SCRIPT" )' > "$repl"
-            ;;
-        bash-rc)
-            cat > "$repl" <<'EOF'
-set +e
-env -u BASH_ENV "${BASH:-/bin/bash}" -e -- "$SWF__INSTRUCTIONS_SCRIPT"
-SWF__RC=$?
-set -e
-if (( SWF__RC != 0 )); then
-    echo "step payload failed: rc=$SWF__RC" >&2
-    exit "$SWF__RC"
-fi
-EOF
-            ;;
-        *)
-            echo "Unknown variant: $variant" >&2
-            return 1
-            ;;
-    esac
-
-    replace_payload_block "$step" "$repl"
-}
 
 function write_payload {
     local scenario="$1"
@@ -211,6 +139,28 @@ printf 'TASK=%s MAX=%s JOB=%s COUNT=%s OFFSET=%s\n' \
     "${SWF__ARRAY_OFFSET-<unset>}"
 EOF
             ;;
+        bash_env)
+            cat > "$file" <<'EOF'
+if command -v module_setup_function > /dev/null 2>&1; then
+    echo "payload bash_env visible"
+else
+    echo "payload bash_env missing"
+    exit 1
+fi
+EOF
+            ;;
+        signal)
+            cat > "$file" <<'EOF'
+trap 'echo "payload cleanup"' TERM EXIT
+echo "payload start"
+sleep 30
+echo "payload end"
+EOF
+            ;;
+        sbatch_missing)
+            # payload that would succeed if sbatch were available
+            printf '%s\n' 'echo "payload ok"' > "$file"
+            ;;
         *)
             echo "Unknown scenario: $scenario" >&2
             return 1
@@ -221,9 +171,8 @@ EOF
 declare -A RC HANDOFF CWD CTRL NEXT STDOUT STDERR
 
 function run_case {
-    local variant="$1"
-    local scenario="$2"
-    local key="$variant:$scenario"
+    local scenario="$1"
+    local key="$scenario"
     local dir="$tmp_root/$key"
     local wf="$dir/workflow"
     local project="$dir/project"
@@ -236,7 +185,17 @@ function run_case {
     mkdir -p "$wf/SWF/steps/1"
     cp "$job_template" "$wf/SWF/steps/1/job.sh"
     write_payload "$scenario" "$wf/SWF/steps/1/instructions.sh"
-    patch_step_variant "$variant" "$wf/SWF/step.sh" || return 1
+
+    if [[ "$scenario" == "bash_env" ]]; then
+        cat > "$wf/SWF/parent_setup.sh" <<'EOF'
+module_setup_function() { :; }
+export -f module_setup_function
+EOF
+    fi
+
+    if [[ "$scenario" == "sbatch_missing" ]]; then
+        mkdir -p "$dir/nobin"
+    fi
 
     if ! bash -n "$wf/SWF/step.sh"; then
         echo "Invalid generated step.sh for $key" >&2
@@ -246,6 +205,8 @@ function run_case {
     : > "$dir/sbatch.log"
 
     local -a slurm_env=(
+        -u SLURM_TMPDIR
+        -u BASH_ENV
         -u SLURM_ARRAY_TASK_ID
         -u SLURM_ARRAY_TASK_MAX
         -u SLURM_ARRAY_JOB_ID
@@ -254,12 +215,30 @@ function run_case {
     )
     if [[ "$scenario" == "array_env" ]]; then
         slurm_env=(
+            -u SLURM_TMPDIR
+            -u BASH_ENV
             SLURM_ARRAY_TASK_ID=2
             SLURM_ARRAY_TASK_MAX=2
             SLURM_ARRAY_JOB_ID=5000
             SLURM_ARRAY_TASK_COUNT=2
             SWF__ARRAY_OFFSET=5
         )
+    fi
+    if [[ "$scenario" == "bash_env" ]]; then
+        slurm_env=(
+            -u SLURM_TMPDIR
+            BASH_ENV="$wf/SWF/parent_setup.sh"
+            SLURM_ARRAY_TASK_ID=2
+            SLURM_ARRAY_TASK_MAX=2
+            SLURM_ARRAY_JOB_ID=5000
+            SLURM_ARRAY_TASK_COUNT=2
+            SWF__ARRAY_OFFSET=5
+        )
+    fi
+
+    local test_path="$fakebin:$PATH"
+    if [[ "$scenario" == "sbatch_missing" ]]; then
+        test_path="$dir/nobin:$PATH"
     fi
 
     (
@@ -269,7 +248,7 @@ function run_case {
             SBATCH_LOG="$dir/sbatch.log" \
             SLURM_JOB_ID=1000 \
             ALT_DIR="$dir/alt" \
-            PATH="$fakebin:$PATH" \
+            PATH="$test_path" \
             bash "$wf/SWF/steps/1/job.sh" "$wf" 1
     ) > "$out" 2> "$err"
     rc=$?
@@ -310,9 +289,8 @@ function run_case {
 }
 
 function cell {
-    local variant="$1"
-    local scenario="$2"
-    local key="$variant:$scenario"
+    local scenario="$1"
+    local key="$scenario"
     local text="rc=${RC[$key]} h=${HANDOFF[$key]}"
 
     case "$scenario" in
@@ -338,6 +316,13 @@ function cell {
                 text+=" hijacked=yes"
             else
                 text+=" hijacked=no"
+            fi
+            ;;
+        bash_env)
+            if grep -q 'payload bash_env visible' <<< "${STDOUT[$key]}"; then
+                text+=" visible=yes"
+            else
+                text+=" visible=no"
             fi
             ;;
     esac
@@ -366,107 +351,117 @@ function check_nonzero {
 }
 
 # Run all cases first; then report and assert.
-for variant in "${variants[@]}"; do
-    for scenario in "${scenarios[@]}"; do
-        run_case "$variant" "$scenario" || exit 1
-    done
+for scenario in "${scenarios[@]}"; do
+    if [[ "$scenario" == "signal" ]]; then
+        # signal case is run specially below
+        continue
+    fi
+    run_case "$scenario" || exit 1
 done
 
-printf '\nBehaviour matrix (rc=exit code, h=1 if sbatch was called)\n'
+printf '\nBehavior matrix (rc=exit code, h=1 if sbatch was called)\n'
 printf '%-30s' "scenario"
-for variant in "${variants[@]}"; do
-    printf '%-32s' "$variant"
-done
+printf '%-32s' "default"
 printf '\n'
-printf '%.0s-' {1..160}
+printf '%.0s-' {1..40}
 printf '\n'
 for scenario in "${scenarios[@]}"; do
+    if [[ "$scenario" == "signal" ]]; then
+        continue
+    fi
     printf '%-30s' "$scenario"
-    for variant in "${variants[@]}"; do
-        printf '%-32s' "$(cell "$variant" "$scenario")"
-    done
+    printf '%-32s' "$(cell "$scenario")"
     printf '\n'
 done
 
 # --- Expected invariants ----------------------------------------------------
-for variant in "${variants[@]}"; do
-    check "$variant:ok rc" "${RC[$variant:ok]}" "0"
-    check "$variant:ok handoff" "${HANDOFF[$variant:ok]}" "1"
-    check "$variant:exit1 rc" "${RC[$variant:exit1]}" "1"
-    check "$variant:exit1 handoff" "${HANDOFF[$variant:exit1]}" "0"
-    check "$variant:nextstep handoff" "${HANDOFF[$variant:nextstep]}" "1"
-    check "$variant:nextstep next" "${NEXT[$variant:nextstep]}" "3"
-    check "$variant:array_env handoff" "${HANDOFF[$variant:array_env]}" "1"
-    check "$variant:array_env env" \
-        "$(grep '^TASK=' <<< "${STDOUT[$variant:array_env]}")" \
-        "TASK=2 MAX=2 JOB=5000 COUNT=2 OFFSET=5"
-done
+check "ok rc" "${RC[ok]}" "0"
+check "ok handoff" "${HANDOFF[ok]}" "1"
+check "exit1 rc" "${RC[exit1]}" "1"
+check "exit1 handoff" "${HANDOFF[exit1]}" "0"
+check "exit0 handoff" "${HANDOFF[exit0]}" "1"
+check "exec handoff" "${HANDOFF[exec]}" "1"
+check "cd cwd" "${CWD[cd]}" "project"
+check "set_u handoff" "${HANDOFF[set_u]}" "1"
+check "set_u rc" "${RC[set_u]}" "0"
+check "path handoff" "${HANDOFF[path]}" "1"
+check "path rc" "${RC[path]}" "0"
+check "function handoff" "${HANDOFF[function]}" "1"
+check "var ctrl" "${CTRL[var]}" "controller"
+check "return handoff" "${HANDOFF[return]}" "0"
+check_nonzero "return rc" "${RC[return]}"
+check "nextstep handoff" "${HANDOFF[nextstep]}" "1"
+check "nextstep next" "${NEXT[nextstep]}" "3"
+check "array_env handoff" "${HANDOFF[array_env]}" "1"
+check "array_env env" \
+    "$(grep '^TASK=' <<< "${STDOUT[array_env]}")" \
+    "TASK=2 MAX=2 JOB=5000 COUNT=2 OFFSET=5"
+check "nonexport visibility" \
+    "$(grep '^SWF__JOB_ID=' <<< "${STDOUT[nonexport]}")" "SWF__JOB_ID=<unset>"
+check "function hijack" \
+    "$(grep -c 'hijacked sbatch' <<< "${STDERR[function]}")" "0"
+check "bash_env handoff" "${HANDOFF[bash_env]}" "1"
+check "bash_env visible" \
+    "$(grep 'payload bash_env visible' <<< "${STDOUT[bash_env]}")" "payload bash_env visible"
+check "sbatch_missing rc" "${RC[sbatch_missing]}" "127"
+check "sbatch_missing handoff" "${HANDOFF[sbatch_missing]}" "0"
 
-# Current source: user code runs in the framework shell.
-check "source:exit0 handoff" "${HANDOFF[source:exit0]}" "0"
-check "source:exec handoff" "${HANDOFF[source:exec]}" "0"
-check "source:cd cwd" "${CWD[source:cd]}" "alt"
-check "source:set_u handoff" "${HANDOFF[source:set_u]}" "0"
-check_nonzero "source:set_u rc" "${RC[source:set_u]}"
-check "source:path handoff" "${HANDOFF[source:path]}" "0"
-check_nonzero "source:path rc" "${RC[source:path]}"
-check "source:function handoff" "${HANDOFF[source:function]}" "0"
-check "source:var ctrl" "${CTRL[source:var]}" "/bogus"
+# --- Signal forwarding test -------------------------------------------------
+signal_dir="$tmp_root/signal"
+mkdir -p "$signal_dir/project" "$signal_dir/tmp" "$signal_dir/alt"
+cp -a "$template_dir" "$signal_dir/workflow"
+mkdir -p "$signal_dir/workflow/SWF/steps/1"
+cp "$job_template" "$signal_dir/workflow/SWF/steps/1/job.sh"
+cat > "$signal_dir/workflow/SWF/steps/1/instructions.sh" <<'EOF'
+trap 'echo "payload cleanup"' TERM EXIT
+echo "payload start"
+sleep 30
+echo "payload end"
+EOF
+: > "$signal_dir/sbatch.log"
+cat > "$signal_dir/run.sh" <<'EOF'
+#!/usr/bin/env bash
+signal_dir="$1"
+cd "$signal_dir/project" || exit 99
+env -u SLURM_TMPDIR -u BASH_ENV \
+    -u SLURM_ARRAY_TASK_ID -u SLURM_ARRAY_TASK_MAX \
+    -u SLURM_ARRAY_JOB_ID -u SLURM_ARRAY_TASK_COUNT -u SWF__ARRAY_OFFSET \
+    TMP="$signal_dir/tmp" \
+    SBATCH_LOG="$signal_dir/sbatch.log" \
+    SLURM_JOB_ID=1000 \
+    ALT_DIR="$signal_dir/alt" \
+    PATH="$PATH" \
+    bash "$signal_dir/workflow/SWF/steps/1/job.sh" "$signal_dir/workflow" 1
+EOF
+chmod +x "$signal_dir/run.sh"
+# Run the signal test in its own process group so we can send TERM to the whole
+# group, as Slurm does for a job.
+set -m
+PATH="$fakebin:$PATH" bash "$signal_dir/run.sh" "$signal_dir" > "$signal_dir/stdout" 2> "$signal_dir/stderr" &
+signal_pgid=$!
+set +m
+sleep 0.5
+# Send TERM to the process group, as Slurm does for a job.
+kill -TERM -$signal_pgid 2>/dev/null || true
+t0=$(date +%s.%N)
+wait $signal_pgid 2>/dev/null || true
+t1=$(date +%s.%N)
+signal_duration=$(echo "$t1 - $t0" | bc)
+signal_stdout=$(cat "$signal_dir/stdout")
+signal_stderr=$(cat "$signal_dir/stderr")
 
-# New child shell: user code is isolated, but a top-level `return` breaks.
-for variant in bash bash-rc default; do
-    check "$variant:exit0 handoff" "${HANDOFF[$variant:exit0]}" "1"
-    check "$variant:exec handoff" "${HANDOFF[$variant:exec]}" "1"
-    check "$variant:cd cwd" "${CWD[$variant:cd]}" "project"
-    check "$variant:set_u handoff" "${HANDOFF[$variant:set_u]}" "1"
-    check "$variant:set_u rc" "${RC[$variant:set_u]}" "0"
-    check "$variant:path handoff" "${HANDOFF[$variant:path]}" "1"
-    check "$variant:path rc" "${RC[$variant:path]}" "0"
-    check "$variant:function handoff" "${HANDOFF[$variant:function]}" "1"
-    check "$variant:var ctrl" "${CTRL[$variant:var]}" "controller"
-    check "$variant:return handoff" "${HANDOFF[$variant:return]}" "0"
-    check_nonzero "$variant:return rc" "${RC[$variant:return]}"
-done
-
-# Subshell: isolated like the child, but keeps `return` and non-exported vars.
-check "subshell:exit0 handoff" "${HANDOFF[subshell:exit0]}" "1"
-check "subshell:exec handoff" "${HANDOFF[subshell:exec]}" "1"
-check "subshell:cd cwd" "${CWD[subshell:cd]}" "project"
-check "subshell:set_u handoff" "${HANDOFF[subshell:set_u]}" "1"
-check "subshell:set_u rc" "${RC[subshell:set_u]}" "0"
-check "subshell:path handoff" "${HANDOFF[subshell:path]}" "1"
-check "subshell:path rc" "${RC[subshell:path]}" "0"
-check "subshell:function handoff" "${HANDOFF[subshell:function]}" "1"
-check "subshell:var ctrl" "${CTRL[subshell:var]}" "controller"
-check "subshell:return handoff" "${HANDOFF[subshell:return]}" "1"
-check "subshell:return rc" "${RC[subshell:return]}" "0"
-
-# Non-exported parent variables are visible to source and subshell, not to
-# the child shell.
-check "source:nonexport visibility" \
-    "$(grep '^SWF__JOB_ID=' <<< "${STDOUT[source:nonexport]}")" "SWF__JOB_ID=1000"
-check "subshell:nonexport visibility" \
-    "$(grep '^SWF__JOB_ID=' <<< "${STDOUT[subshell:nonexport]}")" "SWF__JOB_ID=1000"
-check "bash:nonexport visibility" \
-    "$(grep '^SWF__JOB_ID=' <<< "${STDOUT[bash:nonexport]}")" "SWF__JOB_ID=<unset>"
-check "bash-rc:nonexport visibility" \
-    "$(grep '^SWF__JOB_ID=' <<< "${STDOUT[bash-rc:nonexport]}")" "SWF__JOB_ID=<unset>"
-check "default:nonexport visibility" \
-    "$(grep '^SWF__JOB_ID=' <<< "${STDOUT[default:nonexport]}")" "SWF__JOB_ID=<unset>"
-
-# The function-based sbatch hijack is local to the child/subshell.
-check "source:function hijack" \
-    "$(grep -c 'hijacked sbatch' <<< "${STDERR[source:function]}")" "1"
-check "bash:function hijack" \
-    "$(grep -c 'hijacked sbatch' <<< "${STDERR[bash:function]}")" "0"
-check "subshell:function hijack" \
-    "$(grep -c 'hijacked sbatch' <<< "${STDERR[subshell:function]}")" "0"
-check "default:function hijack" \
-    "$(grep -c 'hijacked sbatch' <<< "${STDERR[default:function]}")" "0"
+if grep -q "payload cleanup" <<< "$signal_stdout"; then
+    printf 'signal cleanup ran (%.2fs)\n' "$signal_duration"
+else
+    printf 'FAIL signal cleanup did not run\n' >&2
+    printf 'stdout: %s\n' "$signal_stdout" >&2
+    printf 'stderr: %s\n' "$signal_stderr" >&2
+    failures=$((failures + 1))
+fi
 
 if (( failures > 0 )); then
     printf '\n%d assertion(s) failed.\n' "$failures" >&2
     exit 1
 fi
 
-printf '\nAll expected behaviours matched.\n'
+printf '\nAll expected behaviors matched.\n'
