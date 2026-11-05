@@ -148,6 +148,22 @@ writes the bash instructions to run, and optionally returns sbatch option
 overrides. You can build higher-level templates by wrapping the base ones — this
 is exactly what [EpiModelHPC](https://github.com/EpiModel/EpiModelHPC) does.
 
+### Payload execution contract
+
+Each step's `instructions.sh` is executed in a child `bash -e`, not sourced into
+the framework shell. The payload inherits the exported `SWF_*` variables and
+Slurm variables, but `cd`, `set`, `trap`, `PATH`, shell functions, and `exit`
+only affect the child. A non-zero exit fails the step and prevents the hand-off;
+`exit 0` means success and continues. Top-level `return` is not valid in a
+payload. The parent shell forwards `TERM`, `USR1`, and `USR2` to the child and
+waits for it to exit. Sites that load `sbatch` through a module can create
+`SWF/parent_setup.sh` so the hand-off shell can find it.
+
+The full shell-level contract is documented in the
+[Step payload contract vignette](https://epimodel.github.io/slurmworkflow/articles/payload-contract.html).
+It lists the exported variables, the exit semantics, `setup_lines` behavior, and
+the next-step files.
+
 ## Controlling Execution Flow
 
 A running step can alter which step runs next, enabling loops and conditional

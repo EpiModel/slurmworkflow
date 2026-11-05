@@ -313,6 +313,27 @@ Finally, as this will be our last step, we override the `mail-type`
 `sbatch_opts` to receive a mail when this *step* finishes, whatever the outcome.
 This way we receive a mail telling us that the *workflow* is finished.
 
+## How a step payload is executed
+
+Each step's `instructions.sh` is executed in a child `bash -e`, not sourced into
+the framework shell. The payload inherits the exported `SWF_*` variables and the
+Slurm variables, but changes to the working directory, shell options, `PATH`,
+functions, traps, or `exit` stay in the child.
+
+- `exit 0` means the payload succeeded; the workflow continues.
+- A non-zero exit fails the step and does not hand off.
+- Top-level `return` is not valid; use `exit`.
+- `setup_lines` run in the same child before the payload, so modules and
+  environment changes are visible to the payload.
+- `sbatch` must be available in the parent shell, because the controller is
+  submitted after the payload exits. Sites that load the Slurm client through a
+  module can put `module load slurm` in `SWF/parent_setup.sh`.
+- The parent shell forwards `TERM`, `USR1`, and `USR2` to the payload child and
+  waits for it to exit, so payload traps have time to run.
+
+The full contract, including the exported variable list and the next-step files,
+is documented in the [Step payload contract](payload-contract.html) vignette.
+
 ## Using the workflow on an HPC
 
 Now that our workflow is created how to actually run the code on the HPC?
