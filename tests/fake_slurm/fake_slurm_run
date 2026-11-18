@@ -14,6 +14,13 @@ while (( $# > 0 )); do
   esac
 done
 [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]] || { printf 'fake_slurm_run: invalid --max-jobs value\n' >&2; exit 1; }
+# FAKE_SLURM_KILL_AFTER=<seconds> sends TERM to the process group of every job
+# (or task) still running after that time, like a Slurm time limit; its state
+# becomes TIMEOUT. FAKE_SLURM_KILL_NAME (a glob, default *) limits it to job
+# names that match.
+KILL_AFTER="${FAKE_SLURM_KILL_AFTER:-}"
+KILL_NAME="${FAKE_SLURM_KILL_NAME:-*}"
+[[ -z "$KILL_AFTER" || "$KILL_AFTER" =~ ^[1-9][0-9]*$ ]] || { printf 'fake_slurm_run: invalid FAKE_SLURM_KILL_AFTER\n' >&2; exit 1; }
 
 function set_state {
   local dir="$1" state="$2"
@@ -32,7 +39,7 @@ function dependencies_finished {
   for dep in "${DEPENDENCIES[@]}"; do
     [[ -d "$FAKE_SLURM_DIR/jobs/$dep" ]] || return 1
     state="$(< "$FAKE_SLURM_DIR/jobs/$dep/state")"
-    [[ "$state" == COMPLETED || "$state" == FAILED || "$state" == CANCELLED ]] || return 1
+    [[ "$state" == COMPLETED || "$state" == FAILED || "$state" == CANCELLED || "$state" == TIMEOUT ]] || return 1
   done
   return 0
 }
@@ -117,7 +124,13 @@ while (( RUN_COUNT < MAX_JOBS )); do
   fi
 
   JOB_FAILED=0
+  JOB_TIMEOUT=0
   ANY_TASK_RUN=0
+  LIMIT=()
+  # shellcheck disable=SC2053
+  if [[ -n "$KILL_AFTER" && "$JOB_NAME" == $KILL_NAME ]]; then
+    LIMIT=(timeout -s TERM "$KILL_AFTER")
+  fi
   # The task itself is empty for a non-array job.
   for TASK in ${RUN_TASKS[@]+"${RUN_TASKS[@]}"}; do
     if [[ -n "$TASK" ]] && task_was_cancelled "$SELECTED_DIR" "$TASK"; then continue; fi
@@ -165,7 +178,7 @@ while (( RUN_COUNT < MAX_JOBS )); do
             SLURM_ARRAY_TASK_COUNT="$ARRAY_COUNT"
         fi
         for EXPORT_PART in ${EXPORT_VALUES[@]+"${EXPORT_VALUES[@]}"}; do export "$EXPORT_PART"; done
-        bash "$SCRIPT" ${JOB_ARGS[@]+"${JOB_ARGS[@]}"}
+        ${LIMIT[@]+"${LIMIT[@]}"} bash "$SCRIPT" ${JOB_ARGS[@]+"${JOB_ARGS[@]}"}
       ) >> "$OUTPUT_FILE" 2>&1
       STATUS=$?
     else
@@ -181,7 +194,7 @@ while (( RUN_COUNT < MAX_JOBS )); do
       done
       (
         cd "$WORK_DIR" || exit 125
-        env -i "${ENV_BASE[@]}" ${EXPORT_VALUES[@]+"${EXPORT_VALUES[@]}"} \
+        ${LIMIT[@]+"${LIMIT[@]}"} env -i "${ENV_BASE[@]}" ${EXPORT_VALUES[@]+"${EXPORT_VALUES[@]}"} \
           "${SLURM_ENV[@]}" bash "$SCRIPT" ${JOB_ARGS[@]+"${JOB_ARGS[@]}"}
       ) >> "$OUTPUT_FILE" 2>&1
       STATUS=$?
@@ -189,11 +202,15 @@ while (( RUN_COUNT < MAX_JOBS )); do
     set -e
     printf '%s\n' "$STATUS" > "$SELECTED_DIR/exit_${TASK:-single}.$CURRENT_JOB_ID"
     if (( STATUS != 0 )); then JOB_FAILED=1; fi
+    if (( ${#LIMIT[@]} > 0 && STATUS == 124 )); then JOB_TIMEOUT=1; fi
   done
 
   if (( ! ANY_TASK_RUN )); then
     set_state "$SELECTED_DIR" CANCELLED
     FINAL_STATE=CANCELLED
+  elif (( JOB_TIMEOUT )); then
+    set_state "$SELECTED_DIR" TIMEOUT
+    FINAL_STATE=TIMEOUT
   elif (( JOB_FAILED )); then
     set_state "$SELECTED_DIR" FAILED
     FINAL_STATE=FAILED

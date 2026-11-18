@@ -9,7 +9,8 @@ add_workflow_step(
   step_tmpl,
   sbatch_opts = NULL,
   step_name = NULL,
-  next_step = NULL
+  next_step = NULL,
+  on_failure = c("stop", "continue")
 )
 }
 \arguments{
@@ -26,6 +27,12 @@ the workflow defaults.}
 \item{next_step}{The step to run after this one: a step name (which may be
 added later), the number of an existing step, or \code{NA}/\code{""} to end the
 workflow. \code{NULL} (the default) uses the following step in build order.}
+
+\item{on_failure}{What the workflow does after this step fails (any job or
+array task exits non-zero, is killed, or cannot start): \code{"stop"} (the
+default) stops the run before the next step, with an \code{error} event in the
+run history; \code{"continue"} records the failure and runs the next step
+anyway. Only \code{"continue"} is written to \code{step.swf} (\code{on_failure=continue}).}
 }
 \value{
 The updated workflow summary, rebuilt from files.

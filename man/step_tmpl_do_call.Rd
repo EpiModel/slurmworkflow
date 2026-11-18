@@ -22,6 +22,12 @@ Serialize a function and arguments and run them with \code{do.call()} in a clean
 session on the HPC. Every value required by the function must be passed as an
 argument or loaded by the function itself.
 }
+\details{
+A function defined in the global environment is serialized without that
+environment: the objects it uses from there do not exist when the step runs.
+A warning names them when the function is created at build time (requires
+the \code{codetools} package).
+}
 \section{Step Templates}{
 
 Step templates are function factories. The returned function writes the step

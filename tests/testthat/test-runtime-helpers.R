@@ -122,3 +122,144 @@ test_that("runtime helpers error outside a workflow", {
   expect_error(get_workflow_submission(), "SWF_SUBMISSION")
   expect_error(change_next_workflow_step(2), "SWF_ROOT")
 })
+
+test_that("override_workflow_step passes on_failure", {
+  log <- local_swf_stub()
+  override_workflow_step("fit", on_failure = "continue")
+  override_workflow_step("fit", sbatch_opts = list(time = 5),
+                         on_failure = "stop", reset = TRUE)
+  expect_identical(readLines(log), c(
+    "CALL", "override", "fit", "--on-failure", "continue",
+    "CALL", "override", "fit", "--opt", "time=5", "--on-failure", "stop",
+    "--reset"
+  ))
+  expect_error(override_workflow_step("fit", on_failure = "ignore"),
+               "on_failure")
+  expect_error(override_workflow_step("fit", on_failure = NA), "on_failure")
+})
+
+test_that("override values are validated with their key", {
+  log <- local_swf_stub()
+  expect_error(override_workflow_step("fit", sbatch_opts = list(comment = "")),
+               "`opt.comment`.*empty")
+  expect_error(override_workflow_step("fit", data = list(flag = TRUE)),
+               "`data.flag` \\(logical\\)")
+  override_workflow_step("fit", data = list(note = ""))
+  expect_identical(readLines(log), c(
+    "CALL", "override", "fit", "--data", "note="
+  ))
+})
+
+test_that("a missing or non-executable swf command is reported", {
+  skip_on_os("windows")
+  directory <- withr::local_tempdir()
+  missing <- file.path(directory, "nope", "swf")
+  withr::local_envvar(c(SWF_CMD = missing))
+  expect_error(change_next_workflow_step("fit"),
+               "`swf` not found at .*nope/swf.*SWF_CMD")
+
+  not_executable <- file.path(directory, "swf")
+  writeLines("#!/bin/sh", not_executable)
+  Sys.chmod(not_executable, mode = "0644")
+  withr::local_envvar(c(SWF_CMD = not_executable))
+  expect_error(override_workflow_step("fit"), "not found at .*SWF_CMD")
+
+  withr::local_envvar(c(SWF_CMD = NA, SWF_ROOT = directory))
+  Sys.chmod(not_executable, mode = "0755")
+  expect_silent(run_swf("status"))
+  withr::local_envvar(c(SWF_ROOT = file.path(directory, "nope")))
+  expect_error(run_swf("status"), "not found at")
+})
+
+# The map runtime script, sourced with a fake array task environment.
+local_map_task <- function(n_items = 5, max_array_size = 2, submission = list(),
+                           task = list(), env = parent.frame()) {
+  directory <- withr::local_tempdir(.local_envir = env)
+  wf <- create_workflow("maprt", list(partition = "compute"), directory)
+  out <- file.path(directory, "items")
+  wf <- add_workflow_step(
+    wf,
+    step_tmpl_map(
+      function(x, out) cat(x, "\n", file = out, append = TRUE, sep = ""),
+      x = seq_len(n_items) * 10,
+      MoreArgs = list(out = out),
+      max_array_size = max_array_size
+    ),
+    step_name = "mapped"
+  )
+  step_dir <- file.path(wf[["root"]], "swf.d", "steps", "1_mapped")
+  contents <- as.list(read_swf(file.path(step_dir, "step.swf")))
+  contents[names(submission)] <- submission
+  contents <- Filter(Negate(is.null), contents)
+  path <- file.path(directory, "submission.swf")
+  write_swf(contents, path)
+  vars <- c(
+    SWF__CUR_DIR = step_dir, SWF_SUBMISSION = path, SWF_CUR = "1",
+    SWF_CUR_NAME = "mapped", SLURM_ARRAY_TASK_ID = "0",
+    SLURM_ARRAY_TASK_MIN = "0",
+    SLURM_ARRAY_TASK_MAX = as.character(min(max_array_size, n_items) - 1),
+    SLURM_ARRAY_TASK_COUNT = as.character(min(max_array_size, n_items))
+  )
+  vars[names(task)] <- unlist(task)
+  withr::local_envvar(vars, .local_envir = env)
+  list(script = file.path(step_dir, "script.R"), out = out, path = path)
+}
+
+run_map_task <- function(task) {
+  suppressMessages(sys.source(task$script, envir = new.env()))
+}
+
+test_that("the map runtime maps 0-based positions to R items", {
+  task <- local_map_task(
+    submission = list(data.map.offset = "2", data.map.total = "5",
+                      opt.array = "0-1"),
+    task = list(SLURM_ARRAY_TASK_ID = "1")
+  )
+  run_map_task(task)
+  # pos = offset + task id = 3, item pos + 1 = 4.
+  expect_identical(readLines(task$out), "40")
+})
+
+test_that("the map runtime validates the map data of the submission", {
+  cases <- list(
+    list(list(data.map.offset = NULL), "`data.map.offset` is missing"),
+    list(list(data.map.total = "abc"), "`data.map.total` must be a non-negative"),
+    list(list(data.map.offset = "-1"), "`data.map.offset` must be a non-negative"),
+    list(list(data.map.offset = "1.5"), "non-negative integer"),
+    list(list(data.map.offset = "5"), "0 <= data.map.offset \\(5\\) < data.map.total \\(5\\)"),
+    list(list(data.map.max_array_size = "0"), "max_array_size \\(0\\) >= 1"),
+    list(list(data.map.total = "9"), "data.map.total \\(9\\) exceeds the number of map items \\(5\\)")
+  )
+  for (case in cases) {
+    task <- local_map_task(submission = case[[1L]])
+    expect_error(run_map_task(task), case[[2L]])
+    expect_error(run_map_task(task), "1_mapped", fixed = TRUE)
+    expect_error(run_map_task(task), task$path, fixed = TRUE)
+    expect_false(file.exists(task$out))
+  }
+})
+
+test_that("the map runtime fails when the array does not cover the slice", {
+  # 5 items, slices of 2: the first slice expects tasks 0-1.
+  cases <- list(
+    list(SLURM_ARRAY_TASK_COUNT = "1", SLURM_ARRAY_TASK_MAX = "0"),
+    list(SLURM_ARRAY_TASK_COUNT = "3", SLURM_ARRAY_TASK_MAX = "2"),
+    list(SLURM_ARRAY_TASK_MIN = "1", SLURM_ARRAY_TASK_MAX = "2",
+         SLURM_ARRAY_TASK_ID = "1"),
+    list(SLURM_ARRAY_TASK_MAX = "2")
+  )
+  for (case in cases) {
+    task <- local_map_task(
+      submission = list(opt.array = "1,3,5"), task = case
+    )
+    expect_error(
+      run_map_task(task),
+      "does not match the map slice. Expected 2 tasks numbered 0-1"
+    )
+    expect_error(run_map_task(task), "\"1,3,5\"", fixed = TRUE)
+    expect_error(run_map_task(task), task$path, fixed = TRUE)
+    expect_false(file.exists(task$out))
+  }
+  task <- local_map_task(task = list(SLURM_ARRAY_TASK_COUNT = NA))
+  expect_error(run_map_task(task), "SLURM_ARRAY_TASK_COUNT must be")
+})

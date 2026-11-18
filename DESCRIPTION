@@ -19,6 +19,7 @@ Depends:
 Imports:
     fs
 Suggests:
+    codetools,
     covr,
     knitr,
     rlang,

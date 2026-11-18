@@ -9,7 +9,8 @@ step_tmpl_map_script(
   ...,
   MoreArgs = NULL,
   setup_lines = NULL,
-  max_array_size = Inf
+  max_array_size = Inf,
+  array_throttle = NULL
 )
 }
 \arguments{
@@ -26,6 +27,11 @@ load the required modules.}
 \item{max_array_size}{Maximum number of array jobs submitted at once. If the
 map is larger, the first array task writes a continuation for the next
 slice.}
+
+\item{array_throttle}{Optional positive whole number \code{k}: at most \code{k} array
+tasks run simultaneously. Appended as \verb{\%k} to every \code{array} option of the
+step, including continuations and \code{\link[=set_map_size]{set_map_size()}} overrides. Do not set
+\code{array} in \code{sbatch_opts} for a map step: it conflicts with the template.}
 }
 \value{
 A template function to be used by \code{add_workflow_step()}.

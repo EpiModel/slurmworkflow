@@ -6,7 +6,8 @@
 #' @param wf_name Name of the new workflow.
 #' @param default_sbatch_opts A named list of default sbatch options for the
 #'   workflow. The `partition` option is mandatory. Options `dependency`,
-#'   `job-name`, `output`, and `parsable` are managed by the engine and refused.
+#'   `job-name`, `output`, `parsable`, `export`, and `export-file` are managed
+#'   by the engine and refused.
 #' @param wf_common_dir Path to the directory where workflows are stored.
 #'
 #' @return The new workflow summary, rebuilt from the generated files.
@@ -28,6 +29,7 @@
 #' @export
 create_workflow <- function(wf_name, default_sbatch_opts,
                             wf_common_dir = "workflows") {
+  validate_workflow_name(wf_name)
   sbatch_opts <- validate_sbatch_opts(default_sbatch_opts)
   if (!"partition" %in% names(sbatch_opts)) {
     stop("A `partition` option must be defined in `default_sbatch_opts`",
@@ -35,15 +37,22 @@ create_workflow <- function(wf_name, default_sbatch_opts,
   }
 
   wf_summary <- new_summary(fs::path(wf_common_dir, wf_name), sbatch_opts)
+  check_legacy_workflow(wf_summary[["root"]])
   create_wf_dir(wf_summary)
   swf_dir <- fs::path(wf_summary[["root"]], "swf.d")
 
   workflow_values <- list()
   workflow_values[names(sbatch_opts)] <- sbatch_opts
   names(workflow_values) <- paste0("opt.", names(sbatch_opts))
-  controller_opts <- intersect(c("partition", "account"), names(sbatch_opts))
+  controller_opts <- intersect(
+    c("partition", "account", "mail-user"),
+    names(sbatch_opts)
+  )
   for (option in controller_opts) {
     workflow_values[[paste0("ctrl.opt.", option)]] <- sbatch_opts[[option]]
+  }
+  if ("mail-user" %in% names(sbatch_opts)) {
+    workflow_values[["ctrl.opt.mail-type"]] <- "FAIL"
   }
   write_swf(workflow_values, fs::path(swf_dir, "workflow.swf"))
 
@@ -73,6 +82,11 @@ create_workflow <- function(wf_name, default_sbatch_opts,
 #' @param next_step The step to run after this one: a step name (which may be
 #'   added later), the number of an existing step, or `NA`/`""` to end the
 #'   workflow. `NULL` (the default) uses the following step in build order.
+#' @param on_failure What the workflow does after this step fails (any job or
+#'   array task exits non-zero, is killed, or cannot start): `"stop"` (the
+#'   default) stops the run before the next step, with an `error` event in the
+#'   run history; `"continue"` records the failure and runs the next step
+#'   anyway. Only `"continue"` is written to `step.swf` (`on_failure=continue`).
 #'
 #' @return The updated workflow summary, rebuilt from files.
 #'
@@ -99,8 +113,24 @@ create_workflow <- function(wf_name, default_sbatch_opts,
 #' @export
 add_workflow_step <- function(wf_summary, step_tmpl,
                               sbatch_opts = NULL, step_name = NULL,
-                              next_step = NULL) {
+                              next_step = NULL,
+                              on_failure = c("stop", "continue")) {
+  on_failure <- match.arg(on_failure)
   wf_summary <- load_workflow(wf_summary[["root"]])
+  step_numbers <- vapply(
+    wf_summary[["steps"]], function(x) x[["number"]], integer(1L)
+  )
+  if (!identical(step_numbers, seq_along(step_numbers))) {
+    found <- vapply(wf_summary[["steps"]], function(x) {
+      paste0(x[["number"]], "_", x[["name"]])
+    }, character(1L))
+    stop(
+      "Workflow steps must be numbered exactly 1..N; found: ",
+      paste(found, collapse = ", "), ". Fix the step directories under ",
+      fs::path(wf_summary[["root"]], "swf.d", "steps"), " first.",
+      call. = FALSE
+    )
+  }
   number <- length(wf_summary[["steps"]]) + 1L
   if (is.null(step_name)) {
     step_name <- paste0("step_", number)
@@ -114,15 +144,17 @@ add_workflow_step <- function(wf_summary, step_tmpl,
   }
 
   next_step <- resolve_next_step(next_step, wf_summary)
+  user_sbatch_opts <- clean_sbatch_opts(sbatch_opts)
   sbatch_opts <- update_sbatch_opts(
-    wf_summary[["default_sbatch_opts"]], sbatch_opts
+    wf_summary[["default_sbatch_opts"]], user_sbatch_opts
   )
   step <- list(
     number = number,
     name = step_name,
     `next` = next_step,
     sbatch_opts = sbatch_opts,
-    data = list()
+    data = list(),
+    on_failure = on_failure
   )
   wf_summary[["steps"]][[number]] <- step
 
@@ -143,8 +175,25 @@ add_workflow_step <- function(wf_summary, step_tmpl,
   template_result <- validate_template_result(template_result)
 
   if (!is.null(template_result[["sbatch_opts"]])) {
+    template_opts <- clean_sbatch_opts(template_result[["sbatch_opts"]])
+    conflicts <- intersect(names(user_sbatch_opts), names(template_opts))
+    for (option in conflicts) {
+      user_value <- format_swf_value(
+        user_sbatch_opts[[option]], paste0("opt.", option)
+      )
+      template_value <- format_swf_value(
+        template_opts[[option]], paste0("opt.", option)
+      )
+      if (!identical(user_value, template_value)) {
+        stop(
+          "The template sets `", option, "`; it conflicts with the value ",
+          "supplied in `sbatch_opts`. Remove one of them or use equal values.",
+          call. = FALSE
+        )
+      }
+    }
     step[["sbatch_opts"]] <- update_sbatch_opts(
-      step[["sbatch_opts"]], template_result[["sbatch_opts"]]
+      step[["sbatch_opts"]], template_opts
     )
   }
   if (!is.null(template_result[["data"]])) {
@@ -154,6 +203,9 @@ add_workflow_step <- function(wf_summary, step_tmpl,
   contents <- list()
   if (!is.null(step[["next"]])) {
     contents[["next"]] <- step[["next"]]
+  }
+  if (identical(step[["on_failure"]], "continue")) {
+    contents[["on_failure"]] <- "continue"
   }
   if (length(step[["sbatch_opts"]]) > 0L) {
     contents[paste0("opt.", names(step[["sbatch_opts"]]))] <-
@@ -166,23 +218,42 @@ add_workflow_step <- function(wf_summary, step_tmpl,
     contents,
     fs::path(wf_vars[["SWF__CUR_DIR"]], "step.swf")
   )
+  wf_summary <- load_workflow(wf_summary[["root"]])
   step_complete <- TRUE
-
-  load_workflow(wf_summary[["root"]])
+  wf_summary
 }
 
 #' @keywords internal
 #' @noRd
-validate_step_name <- function(step_name) {
+validate_step_name <- function(step_name, argument = "step_name") {
   if (length(step_name) != 1L || is.na(step_name) ||
       !is.character(step_name) ||
       !grepl("^[A-Za-z][A-Za-z0-9_-]*$", step_name)) {
     stop(
-      "`step_name` must match '^[A-Za-z][A-Za-z0-9_-]*$'.",
+      "`", argument, "` must match '^[A-Za-z][A-Za-z0-9_-]*$'.",
       call. = FALSE
     )
   }
+  if (nchar(step_name, type = "chars") > 64L) {
+    stop("`", argument, "` must be at most 64 characters.", call. = FALSE)
+  }
   invisible(step_name)
+}
+
+#' @keywords internal
+#' @noRd
+validate_workflow_name <- function(wf_name) {
+  if (length(wf_name) != 1L || is.na(wf_name) || !is.character(wf_name) ||
+      !grepl("^[A-Za-z][A-Za-z0-9._-]*$", wf_name)) {
+    stop(
+      "`wf_name` must match '^[A-Za-z][A-Za-z0-9._-]*$'.",
+      call. = FALSE
+    )
+  }
+  if (nchar(wf_name, type = "chars") > 64L) {
+    stop("`wf_name` must be at most 64 characters.", call. = FALSE)
+  }
+  invisible(wf_name)
 }
 
 #' @keywords internal
@@ -204,7 +275,7 @@ resolve_next_step <- function(next_step, wf_summary) {
     }
     return(resolve_summary_step(wf_summary, as.integer(next_step))[["name"]])
   }
-  validate_step_name(next_step)
+  validate_step_name(next_step, argument = "next_step")
   next_step
 }
 
@@ -240,14 +311,32 @@ validate_template_data <- function(data) {
 #' @param wf_root Path to a workflow directory. If omitted, `SWF_ROOT` is used.
 #'
 #' @return A list with `name`, `root`, `default_sbatch_opts`, and `steps`. Each
-#'   step contains `number`, `name`, `next`, `sbatch_opts`, and `data`.
+#'   step contains `number`, `name`, `next`, `sbatch_opts`, `data`, and
+#'   `on_failure`.
 #'
 #' @export
 load_workflow <- function(wf_root = NULL) {
   if (is.null(wf_root)) {
     wf_root <- get_workflow_root()
   }
+  check_legacy_workflow(wf_root)
   summary_from_files(wf_root)
+}
+
+#' @keywords internal
+#' @noRd
+check_legacy_workflow <- function(wf_root) {
+  legacy <- c("workflow.yaml", "start_workflow.sh")
+  found <- legacy[fs::file_exists(fs::path(wf_root, legacy))]
+  if (length(found) > 0L) {
+    stop(
+      "\"", wf_root, "\" is a slurmworkflow 0.1.x workflow (it contains ",
+      paste0("`", found, "`", collapse = " and "), "); delete it and ",
+      "rebuild it with slurmworkflow 0.2.0.",
+      call. = FALSE
+    )
+  }
+  invisible(wf_root)
 }
 
 #' Get the Root Directory of a Workflow

@@ -257,7 +257,8 @@ test_that("a swfcalib-like loop resizes the map each iteration then exits", {
 
 # b. set_map_size(0) skips the map --------------------------------------------
 
-build_resize_then_map <- function(rt, name, size) {
+build_resize_then_map <- function(rt, name, size, on_failure = "stop",
+                                  array_throttle = NULL, max_array_size = Inf) {
   items <- file.path(rt$out, "items")
   after <- file.path(rt$out, "after")
   wf <- new_test_workflow(rt, name)
@@ -267,7 +268,8 @@ build_resize_then_map <- function(rt, name, size) {
       payload(function(n) slurmworkflow::set_map_size("mapped", n)),
       list(n = size)
     ),
-    step_name = "resize"
+    step_name = "resize",
+    on_failure = on_failure
   )
   wf <- add_workflow_step(
     wf,
@@ -275,7 +277,9 @@ build_resize_then_map <- function(rt, name, size) {
       payload(function(idx, items) cat(idx, "\n", file = items,
                                        append = TRUE, sep = "")),
       idx = 1:5,
-      MoreArgs = list(items = items)
+      MoreArgs = list(items = items),
+      max_array_size = max_array_size,
+      array_throttle = array_throttle
     ),
     step_name = "mapped"
   )
@@ -299,15 +303,27 @@ test_that("set_map_size(0) skips the map step and the workflow continues", {
   expect_identical(readLines(built$after), "after")
 })
 
-# c. set_map_size above n_items fails in the payload ---------------------------
+# c. a failed step stops the workflow, unless on_failure = "continue" ---------
 
-test_that("set_map_size above n_items fails the job and the workflow goes on", {
-  rt <- local_swf_runtime()
-  built <- build_resize_then_map(rt, "toobig", 6)
+expect_run_stopped_on <- function(run, step, n_failed = 1L) {
+  last <- run$history[[length(run$history)]]
+  controller <- file.path(run$log_dir, "controller.out")
+  expect(
+    identical(last[["event"]], "error") &&
+      identical(last[["reason"]], paste0("step_failed:", step)),
+    paste(c(
+      paste0("the run did not stop on step_failed:", step, "; history:"),
+      readLines(file.path(run$dir, "history")),
+      "controller log:",
+      if (file.exists(controller)) readLines(controller)
+    ), collapse = "\n")
+  )
+  expect_identical(last[["failed"]], as.character(n_failed))
+  expect_length(events(run, "end"), 0L)
+  expect_length(list.files(file.path(run$dir, "failed")), n_failed)
+}
 
-  run <- run_workflow(rt, built$wf)
-
-  expect_run_ended(run)
+expect_resize_failed <- function(rt, run) {
   resize_job <- submissions(run, "1_resize")[[1L]][["job"]]
   failed <- list.files(file.path(run$dir, "failed"))
   expect_identical(failed, resize_job)
@@ -320,7 +336,30 @@ test_that("set_map_size above n_items fails the job and the workflow goes on", {
     full.names = TRUE
   ))
   expect_true(any(grepl("cannot exceed", resize_log, fixed = TRUE)))
+}
 
+test_that("set_map_size above n_items fails the job and stops the workflow", {
+  rt <- local_swf_runtime()
+  built <- build_resize_then_map(rt, "toobig", 6)
+
+  run <- run_workflow(rt, built$wf)
+
+  expect_run_stopped_on(run, "1_resize")
+  expect_resize_failed(rt, run)
+  expect_identical(submitted_steps(run), "1_resize")
+  expect_false(file.exists(built$items))
+  expect_false(file.exists(built$after))
+})
+
+test_that("with on_failure = \"continue\", the workflow goes on", {
+  rt <- local_swf_runtime()
+  built <- build_resize_then_map(rt, "toobig", 6, on_failure = "continue")
+  expect_identical(built$wf$steps[[1L]]$on_failure, "continue")
+
+  run <- run_workflow(rt, built$wf)
+
+  expect_run_ended(run)
+  expect_resize_failed(rt, run)
   # No override was written: the map runs with its built size, then `after`.
   expect_identical(submitted_steps(run), c("1_resize", "2_mapped", "3_after"))
   expect_identical(
@@ -328,6 +367,74 @@ test_that("set_map_size above n_items fails the job and the workflow goes on", {
   )
   expect_identical(readLines(built$items), as.character(1:5))
   expect_identical(readLines(built$after), "after")
+})
+
+test_that("array_throttle reaches every slice, including set_map_size", {
+  rt <- local_swf_runtime()
+  built <- build_resize_then_map(
+    rt, "throttled", 3, array_throttle = 1, max_array_size = 2
+  )
+  expect_identical(built$wf$steps[[2L]]$sbatch_opts$array, "0-1%1")
+
+  run <- run_workflow(rt, built$wf)
+
+  expect_run_ended(run)
+  expect_no_failures(run)
+  expect_identical(
+    submitted_steps(run), c("1_resize", "2_mapped", "2_mapped", "3_after")
+  )
+  arrays <- vapply(submissions(run, "2_mapped"), function(x) {
+    grep("^--array=", job_argv(rt, x[["job"]]), value = TRUE)
+  }, character(1L))
+  expect_identical(arrays, c("--array=0-1%1", "--array=0-0%1"))
+  expect_identical(sort(as.integer(readLines(built$items))), 1:3)
+})
+
+test_that("an array override that does not cover the slice fails every task", {
+  rt <- local_swf_runtime()
+  items <- file.path(rt$out, "items")
+  after <- file.path(rt$out, "after")
+  wf <- new_test_workflow(rt, "badarray")
+  wf <- add_workflow_step(
+    wf,
+    step_tmpl_do_call(
+      payload(function() {
+        slurmworkflow::override_workflow_step(
+          "mapped", sbatch_opts = list(array = "0-1")
+        )
+      }),
+      list()
+    ),
+    step_name = "shrink"
+  )
+  wf <- add_workflow_step(
+    wf,
+    step_tmpl_map(
+      payload(function(idx, items) cat(idx, "\n", file = items,
+                                       append = TRUE, sep = "")),
+      idx = 1:5,
+      MoreArgs = list(items = items)
+    ),
+    step_name = "mapped"
+  )
+  wf <- add_workflow_step(wf, bash_write(after, "after"), step_name = "after")
+
+  run <- run_workflow(rt, wf)
+
+  expect_run_stopped_on(run, "2_mapped", n_failed = 2L)
+  expect_identical(submitted_steps(run), c("1_shrink", "2_mapped"))
+  expect_false(file.exists(items))
+  expect_false(file.exists(after))
+  job <- submissions(run, "2_mapped")[[1L]][["job"]]
+  logs <- list.files(run$log_dir, pattern = paste0("^2_mapped_", job, "_"),
+                     full.names = TRUE)
+  expect_length(logs, 2L)
+  for (log in logs) {
+    expect_true(any(grepl(
+      "Expected 5 tasks numbered 0-4 .* got 2 tasks numbered 0-1",
+      readLines(log)
+    )))
+  }
 })
 
 # d. map slices ----------------------------------------------------------------

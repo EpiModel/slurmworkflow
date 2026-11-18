@@ -33,7 +33,11 @@ summary_from_files <- function(wf_root) {
     numbers <- as.integer(sub(pattern, "\\1", directories))
     names <- sub(pattern, "\\2", directories)
     if (anyDuplicated(numbers) || anyDuplicated(names)) {
-      stop("Step numbers and names must be unique.", call. = FALSE)
+      stop(
+        "Step numbers and names must be unique under ", steps_dir, "; found: ",
+        paste(sort(directories), collapse = ", "), ".",
+        call. = FALSE
+      )
     }
 
     steps <- lapply(order(numbers), function(i) {
@@ -45,7 +49,8 @@ summary_from_files <- function(wf_root) {
           unname(contents[["next"]])
         },
         sbatch_opts = swf_prefixed_list(contents, "opt."),
-        data = swf_prefixed_list(contents, "data.")
+        data = swf_prefixed_list(contents, "data."),
+        on_failure = read_on_failure(contents, step_dirs[[i]])
       )
     })
   }
@@ -56,6 +61,23 @@ summary_from_files <- function(wf_root) {
     default_sbatch_opts = swf_prefixed_list(workflow, "opt."),
     steps = steps
   )
+}
+
+#' @keywords internal
+#' @noRd
+read_on_failure <- function(contents, step_dir) {
+  if (!"on_failure" %in% names(contents)) {
+    return("stop")
+  }
+  value <- unname(contents[["on_failure"]])
+  if (!value %in% c("stop", "continue")) {
+    stop(
+      "Invalid `on_failure` value \"", value, "\" in ",
+      fs::path(step_dir, "step.swf"), ": use `stop` or `continue`.",
+      call. = FALSE
+    )
+  }
+  value
 }
 
 #' @keywords internal

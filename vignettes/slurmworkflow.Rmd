@@ -31,8 +31,18 @@ wf <- create_workflow(
 
 This creates `workflows/analysis/`, including the executable `swf` command,
 `swf.d/workflow.swf`, and `swf.d/sbatch_rules.swf`. A `partition` default is
-required. The options `dependency`, `job-name`, `output`, and `parsable` are
-managed by the engine and are refused in user option lists.
+required. The options `dependency`, `job-name`, `output`, `parsable`, `export`,
+and `export-file` are managed by the engine and are refused in user option
+lists. The workflow name must match `^[A-Za-z][A-Za-z0-9._-]*$`.
+
+When the defaults contain `mail-user`, the controller jobs also get it, with
+`mail-type=FAIL`: a controller that stops the workflow after a failed step
+fails itself, and Slurm mails you (see [Failed steps](#failed-steps)).
+
+The `opt.*` entries of `workflow.swf` are **builder defaults**: they are merged
+into each step when it is added. Editing them afterwards changes nothing at run
+time. Only the `ctrl.opt.*` entries (options of the controller jobs) are read
+when the workflow runs.
 
 ## Add named steps
 
@@ -69,13 +79,19 @@ Unlike `step_tmpl_rscript()`, `step_tmpl_do_call_script()` does not embed the
 contents of the script. Its path must therefore be valid on the HPC.
 `step_tmpl_do_call()` similarly runs a serialized function with `do.call()`.
 Functions execute in a clean R session: all required data must be arguments or
-be loaded by the function.
+be loaded by the function. A function defined in the global environment loses
+that environment when serialized; if it uses global objects,
+`step_tmpl_do_call()` and `step_tmpl_map()` warn at build time.
 
 ### Step names and successors
 
-Steps live under `swf.d/steps/<N>_<name>/`, where `N` starts at one. A name must
-match `^[A-Za-z][A-Za-z0-9_-]*$` and be unique; `step_<N>` is the default. The
-directory is the canonical record of the name.
+Steps live under `swf.d/steps/<N>_<name>/`, where `N` runs from one to the number
+of steps, without gaps. A name must match `^[A-Za-z][A-Za-z0-9_-]*$`, have at
+most 64 characters, and be unique; `step_<N>` is the default. The directory is
+the canonical record of the name. Numbers are positions in build order, not
+identities: prefer names everywhere. `add_workflow_step()` refuses a workflow
+whose step directories are not numbered exactly `1..N` (for example after a
+step directory was deleted by hand).
 
 By default, a step is followed by the next one in build order. Use `next_step`
 to make a branch or loop explicit:
@@ -101,6 +117,33 @@ to its name. A character name only has to be valid syntactically, so it may name
 a step added later. Both `NA` and `""` explicitly end the workflow; `NULL`
 leaves `next` absent and uses build order.
 
+### Failed steps
+
+**A failed step stops the workflow unless `on_failure = "continue"`.** A step
+fails when any of its jobs or array tasks exits with a non-zero status, is
+killed (time limit, `scancel`), or cannot start. The controller that runs after
+it then submits nothing: it records
+`event=error reason=step_failed:<N>_<name>` in the run history, `swf status`
+prints `Workflow stopped on error: ...`, and the controller job itself fails
+(Slurm mails you when `mail-user` is set). Guards such as a `stop()` in an R
+step therefore stop the whole run.
+
+For a step whose failures must not stop the run, for example a map where some
+tasks may fail, set `on_failure = "continue"`:
+
+```{r on-failure, eval = FALSE}
+wf <- add_workflow_step(
+  wf,
+  step_tmpl_map(fit_one, scenario = 1:100),
+  step_name = "fit_all",
+  on_failure = "continue"
+)
+```
+
+The failures are still recorded in the run's `failed/` directory and listed by
+`swf status`, and the next step runs. `step.swf` stores `on_failure=continue`;
+the default (`stop`) is not written.
+
 ## Map over arguments
 
 `step_tmpl_map()` and `step_tmpl_map_script()` create one Slurm array element
@@ -114,6 +157,7 @@ wf <- add_workflow_step(
     scenario = 1:10000,
     MoreArgs = list(n_reps = 32, n_cores = 8),
     max_array_size = 500,
+    array_throttle = 100,
     setup_lines = "module load R/4.3.0"
   ),
   sbatch_opts = list(`mem-per-cpu` = "4G", `cpus-per-task` = 8),
@@ -127,15 +171,29 @@ minus one and these data entries:
 
 - `data.map.n_items`: the immutable number of items in `map.rds`;
 - `data.map.max_array_size`: the finite per-submission limit;
-- `data.map.offset`: the zero-based offset of this submission;
+- `data.map.offset`: the number of items handled by earlier slices;
 - `data.map.total`: the number of items enabled for this map execution.
+
+Task `SLURM_ARRAY_TASK_ID` handles the 0-based position
+`pos = data.map.offset + SLURM_ARRAY_TASK_ID`, that is item `pos + 1` of the
+iterators. `array_throttle = k` appends `%k` to the array: at most `k` tasks run
+at the same time.
 
 When there are more items than `max_array_size`, array task zero writes a
 one-shot continuation with `repeat = TRUE`. It advances `data.map.offset` and
-preserves an array throttle (`%k`) when present. Consequently, a dynamic next
-message written by `FUN` is honoured only after the last slice, not between
-slices. Tasks beyond a reduced total print a message and exit successfully
-without calling `FUN`.
+preserves the array throttle (`%k`). Consequently, a dynamic next message
+written by `FUN` is honoured only after the last slice, not between slices.
+Slices of one wave inherit the wave's override: each continuation is built
+from the submission of the slice that wrote it.
+
+Before calling `FUN`, every task validates the `data.map.*` entries of its
+submission and checks that the array covers exactly the expected slice (task
+IDs `0` to `min(max_array_size, total - offset) - 1`). On a mismatch, for
+example an `array` override that does not match `data.map.total`, every task
+fails with a message giving both sizes, the array, and the submission file.
+Use `set_map_size()` rather than overriding `array` directly. Do not set `array`
+in the `sbatch_opts` of a map step: the template sets it, and a different value
+is an error.
 
 No sbatch `--export` option is used for this bookkeeping. Array tasks read the
 exact resolved file identified by `SWF_SUBMISSION`.
@@ -149,7 +207,9 @@ members of one exclusive group in the same update is an error.
 
 The result is written to `step.swf` as `opt.<option>=<value>`. The controller
 turns each entry into one sbatch argument; values with spaces, quotes, `$`, `*`,
-`%`, `#`, or `=` are not shell-expanded or re-split.
+`%`, `#`, or `=` are not shell-expanded or re-split. Values must be single
+character strings or numbers: logical values, factors, lists, dates, empty
+strings, and duplicate option names are refused with the option's name.
 
 ## Start, inspect, and stop a run
 
@@ -158,6 +218,12 @@ Copy the full workflow directory to the cluster. From the project root:
 ```{bash start, eval = FALSE}
 ./workflows/analysis/swf start
 ```
+
+Every `swf start` begins a new run, with a fresh run directory
+(`swf.d/run/<run_id>/`) and log directory (`log/<run_id>/`). Starting again at a
+later step with `-s` is a new run too, not a resumption. `swf start` first runs
+`swf check`, which validates the step layout and every `.swf` file, and refuses
+to start a broken workflow.
 
 The working directory at `swf start` is inherited by jobs. Select another
 starting step by name or number with `-s`, or set the working directory with
@@ -180,15 +246,29 @@ The `swf` executable is the only command needed on the HPC:
 | `swf runs` | List run identifiers |
 | `swf next <step>` | Set a one-shot runtime successor |
 | `swf override <step>` | Build a one-shot resolved submission override |
+| `swf check` | Validate the workflow files (also run by `swf start`) |
 
 `swf log` additionally accepts `-t` for an array task, `-r` for a run, `-n` for
 the tail length, `--path` for paths only, and `-f` to follow output. Use
 `swf help` or `swf <command> --help` for complete options.
 
 Run-specific state is under `swf.d/run/<run_id>/`; logs are under
-`log/<run_id>/`. A failing array task leaves a marker in the run's `failed/`
-directory, while the `afterany` controller dependency allows subsequent steps to
-continue.
+`log/<run_id>/`. A failing job or array task leaves a marker in the run's
+`failed/` directory, and the workflow stops after that step unless the step has
+`on_failure = "continue"` (see [Failed steps](#failed-steps)).
+
+Job names and log paths are a public, stable format: step jobs are named
+`<wf>_<N>_<name>`, controllers `<wf>_ctrl`, and step logs are
+`log/<run_id>/<N>_<name>_<job>_<task>.out`.
+
+### The job environment
+
+Jobs are submitted with `--export=NONE`: a step starts from a bare environment,
+not from the shell that ran `swf start`. Load modules and set paths in the step
+(`setup_lines`). The engine sets `SWF_ROOT`, `SWF_NAME`, `SWF_RUN_ID`,
+`SWF_RUN_DIR`, `SWF_LOG_DIR`, `SWF_CMD`, `SWF_CUR`, `SWF_CUR_NAME`, and
+`SWF_SUBMISSION`. Keep state that belongs to one run (counters, flags,
+intermediate files) in `$SWF_RUN_DIR`: a new run starts with an empty one.
 
 ## Dynamic control flow
 
@@ -221,6 +301,11 @@ slurmworkflow::get_workflow_root()              # Absolute workflow root on HPC
 
 **DANGEROUS:** `change_next_workflow_step()`/`swf next` can skip work or create
 infinite loops. Make termination conditions explicit and test dynamic paths.
+Prefer a static `next_step` when the successor is known at build time, and name
+the target step: numbers are accepted, but they are positions, so never compute
+a target from `get_current_workflow_step()`. The last `next` written before the
+controller runs wins (a replacement is logged in the run history). A stopped
+run refuses messages.
 
 ## One-shot overrides
 
@@ -236,14 +321,17 @@ slurmworkflow::override_workflow_step(
 )
 ```
 
-The override aggregates with a pending override, otherwise with the step's
+**Overrides aggregate**: an override merges with a pending override of the
+same step (the last value of each key wins), otherwise with the step's
 `step.swf`. It applies to exactly one submission, then the step reverts to its
 saved defaults. `reset = TRUE` ignores the pending override instead. `from`
 selects a particular resolved submission as the merge base. `skip = TRUE`
 bypasses a submission; `repeat_step = TRUE` runs the target again immediately
-after it finishes.
+after it finishes. `on_failure = "continue"` (or `"stop"`) changes what a failure
+of that one submission does. Overriding a map step whose pending submission is
+a continuation keeps the continuation's slice unless `reset = TRUE`.
 
-These are deliberately low-level, potentially dangerous operations. Repetitions
+**DANGEROUS:** these are deliberately low-level operations. Repetitions
 can loop forever and skips can omit necessary computation.
 
 For a map step, `set_map_size()` safely constructs the common size override:

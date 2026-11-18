@@ -45,7 +45,16 @@ clean_sbatch_opts <- function(sbatch_opts) {
   if (is.null(sbatch_opts)) {
     return(list())
   }
-  Filter(function(x) !is.null(x), as.list(sbatch_opts))
+  sbatch_opts <- as.list(sbatch_opts)
+  if (anyDuplicated(names(sbatch_opts))) {
+    duplicated_names <- unique(names(sbatch_opts)[duplicated(names(sbatch_opts))])
+    stop(
+      "SBATCH options must have unique names; duplicated: ",
+      paste0(duplicated_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  Filter(function(x) !is.null(x), sbatch_opts)
 }
 
 #' @keywords internal
@@ -104,7 +113,7 @@ get_exclusive_sbatch_opts <- function() {
 #' @keywords internal
 #' @noRd
 get_reserved_sbatch_opts <- function() {
-  c("dependency", "job-name", "output", "parsable")
+  c("dependency", "job-name", "output", "parsable", "export", "export-file")
 }
 
 #' List all valid SBATCH options.

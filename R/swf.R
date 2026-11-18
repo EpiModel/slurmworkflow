@@ -84,7 +84,7 @@ write_swf <- function(x, path) {
   }
 
   values <- vapply(seq_along(x), function(i) {
-    format_swf_value(x[[i]])
+    format_swf_value(x[[i]], keys[[i]])
   }, character(1L))
   lines <- c("#!swf-v1", paste0(keys, "=", values))
 
@@ -114,21 +114,43 @@ write_swf <- function(x, path) {
 
 #' @keywords internal
 #' @noRd
-format_swf_value <- function(value) {
-  if (length(value) != 1L || is.na(value)) {
-    stop("SWF values must be non-missing scalars.", call. = FALSE)
+format_swf_value <- function(value, key = NULL) {
+  label <- if (is.null(key)) "SWF value" else paste0("SWF value for `", key, "`")
+  type <- if (is.object(value)) {
+    paste(class(value), collapse = "/")
+  } else {
+    typeof(value)
   }
-  if (is.numeric(value) && !is.finite(value)) {
-    stop("SWF numeric values must be finite.", call. = FALSE)
+  invalid <- function(message) {
+    stop(label, " (", type, ") ", message, call. = FALSE)
+  }
+
+  if (length(value) != 1L) {
+    invalid("must have length one.")
+  }
+  if (is.na(value)) {
+    invalid("must not be missing.")
+  }
+  if (is.object(value) ||
+      !(is.character(value) || is.numeric(value)) || !is.atomic(value)) {
+    invalid("must be an atomic character, numeric, or integer value.")
   }
   if (is.numeric(value)) {
-    value <- format(value, scientific = FALSE, trim = TRUE)
-  } else {
-    value <- as.character(value)
+    if (!is.finite(value)) {
+      invalid("must be finite.")
+    }
+    value <- if (value == floor(value)) {
+      format(value, scientific = FALSE, trim = TRUE)
+    } else {
+      format(value, digits = 15, trim = TRUE)
+    }
   }
   value <- enc2utf8(value)
+  if (!is.null(key) && startsWith(key, "opt.") && !nzchar(value)) {
+    invalid("must not be empty for an sbatch option.")
+  }
   if (grepl("[\r\n]", value)) {
-    stop("SWF values must not contain newlines.", call. = FALSE)
+    invalid("must not contain newlines.")
   }
   value
 }

@@ -26,3 +26,14 @@ test_that("step options replace defaults and conflicting options", {
     list(partition = "compute", time = 30, `mem-per-cpu` = "2G")
   )
 })
+
+test_that("export options are reserved and duplicate names are refused", {
+  expect_true(all(c("export", "export-file") %in% get_reserved_sbatch_opts()))
+  expect_error(validate_sbatch_opts(list(export = "ALL")), "managed")
+  expect_error(validate_sbatch_opts(list(`export-file` = "f")), "managed")
+  expect_error(
+    validate_sbatch_opts(list(time = 60, mem = "1G", time = 30)),
+    "unique names; duplicated: time"
+  )
+  expect_error(clean_sbatch_opts(c(time = "1", time = "2")), "duplicated")
+})

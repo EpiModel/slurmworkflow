@@ -35,15 +35,29 @@ fake_slurm_run
   `SLURM_JOB_ID` values. One line is printed for each submitted job run; a live
   runnable backlog after the maximum produces exit status 2.
 
-`afterany` dependencies are satisfied by `COMPLETED`, `FAILED`, or `CANCELLED`
-parents. An array is `FAILED` if any task fails, but its remaining tasks still
+`afterany` dependencies are satisfied by `COMPLETED`, `FAILED`, `CANCELLED` or
+`TIMEOUT` parents. An array is `FAILED` if any task fails, but its remaining tasks still
 run. Output is appended after substituting `%x`, `%j`, `%A`, and `%a`.
+
+## Failure hooks
+
+Environment variables read by the fake commands, to test failure handling:
+
+- `FAKE_SLURM_SQUEUE_FAIL=1`: `squeue` prints `slurm_load_jobs error: Invalid
+  job id specified` and exits 1 (purged ids, unreachable slurmctld).
+- `FAKE_SLURM_SCANCEL_FAIL=1`: `scancel` cancels nothing and exits 1.
+- `FAKE_SLURM_SBATCH_FAIL=1`: `sbatch` refuses every submission.
+- `FAKE_SLURM_KILL_AFTER=<seconds>` (read by `fake_slurm_run`): a job, or array
+  task, still running after that time gets `TERM` on its whole process group,
+  like a Slurm time limit (`timeout -s TERM`); the job ends `TIMEOUT`.
+  `FAKE_SLURM_KILL_NAME` (a glob on the job name, default `*`) limits it, for
+  example to `wf_1_*` so that controllers are never killed.
 
 ## State and environment
 
 Each `$FAKE_SLURM_DIR/jobs/<id>/` directory contains state and metadata files.
-`state` changes from `PENDING` through `RUNNING` to `COMPLETED`, `FAILED`, or
-`CANCELLED`; `argv` and `args` are NUL-delimited. No metadata file is sourced.
+`state` changes from `PENDING` through `RUNNING` to `COMPLETED`, `FAILED`,
+`CANCELLED` or `TIMEOUT`; `argv` and `args` are NUL-delimited. No metadata file is sourced.
 
 `--export=ALL` inherits the runner's environment. With `NONE`, the runner uses
 `env -i`, retains `HOME`, `PATH`, `USER`, and `LANG`, and adds variables named

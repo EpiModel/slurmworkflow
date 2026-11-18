@@ -3,6 +3,11 @@ set -e
 
 [[ -n "${FAKE_SLURM_DIR:-}" ]] || { printf 'scancel: error: FAKE_SLURM_DIR is required\n' >&2; exit 1; }
 (( $# > 0 )) || { printf 'scancel: error: no job ids supplied\n' >&2; exit 1; }
+# Test hook: fail without cancelling anything.
+if [[ "${FAKE_SLURM_SCANCEL_FAIL:-}" == 1 ]]; then
+  printf 'scancel: error: Unable to contact slurm controller (connect failure)\n' >&2
+  exit 1
+fi
 
 for REFERENCE in "$@"; do
   ID="${REFERENCE%%_*}"

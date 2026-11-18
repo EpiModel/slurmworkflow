@@ -82,13 +82,17 @@ change_next_workflow_step <- function(next_step, sbatch_opts = NULL) {
 #' @param unset_opts Character vector of sbatch option names to remove.
 #' @param from Optional submission file to use as the merge base.
 #' @param reset Ignore a pending override and merge from the step defaults.
+#'   Without `reset`, an override of a map step whose pending submission is a
+#'   continuation (`repeat`) keeps the continuation's slice.
+#' @param on_failure Optional `"stop"` or `"continue"`: what the workflow does
+#'   if this submission fails. `NULL` keeps the value of the merge base.
 #'
 #' @return The captured `swf override` output, invisibly.
 #' @export
 override_workflow_step <- function(step, sbatch_opts = NULL, data = NULL,
                                    skip = FALSE, repeat_step = FALSE,
                                    unset_opts = NULL, from = NULL,
-                                   reset = FALSE) {
+                                   reset = FALSE, on_failure = NULL) {
   args <- c("override", format_swf_value(step))
   if (!is.null(sbatch_opts)) {
     sbatch_opts <- validate_sbatch_opts(sbatch_opts)
@@ -106,6 +110,14 @@ override_workflow_step <- function(step, sbatch_opts = NULL, data = NULL,
       stop("`data` must be a named list.", call. = FALSE)
     }
     args <- c(args, named_swf_args(data, "--data"))
+  }
+  if (!is.null(on_failure)) {
+    if (length(on_failure) != 1L || is.na(on_failure) ||
+        !on_failure %in% c("stop", "continue")) {
+      stop("`on_failure` must be NULL, \"stop\", or \"continue\".",
+           call. = FALSE)
+    }
+    args <- c(args, "--on-failure", on_failure)
   }
   args <- c(
     args,
@@ -134,7 +146,10 @@ named_swf_args <- function(x, flag) {
   if (is.null(names(x)) || any(!nzchar(names(x))) || anyDuplicated(names(x))) {
     stop("Command values must have unique, non-empty names.", call. = FALSE)
   }
-  values <- vapply(x, format_swf_value, character(1L))
+  prefix <- c("--opt" = "opt.", "--data" = "data.")[[flag]]
+  values <- vapply(seq_along(x), function(i) {
+    format_swf_value(x[[i]], paste0(prefix, names(x)[[i]]))
+  }, character(1L))
   interleave_after_flag(flag, paste0(names(x), "=", values))
 }
 
@@ -210,6 +225,19 @@ swf_command <- function() {
 #' @noRd
 run_swf <- function(args) {
   command <- swf_command()
+  resolved <- if (grepl("/", command, fixed = TRUE)) {
+    command
+  } else {
+    unname(Sys.which(command))
+  }
+  if (!nzchar(resolved) || !fs::file_exists(resolved) ||
+      fs::dir_exists(resolved) || file.access(resolved, mode = 1L) != 0L) {
+    stop(
+      "`swf` not found at ", command, " (or not executable): set SWF_CMD, ",
+      "or run inside a workflow job.",
+      call. = FALSE
+    )
+  }
   output <- suppressWarnings(system2(
     command,
     shQuote(as.character(args)),

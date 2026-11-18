@@ -12,7 +12,8 @@ override_workflow_step(
   repeat_step = FALSE,
   unset_opts = NULL,
   from = NULL,
-  reset = FALSE
+  reset = FALSE,
+  on_failure = NULL
 )
 }
 \arguments{
@@ -31,7 +32,12 @@ override_workflow_step(
 
 \item{from}{Optional submission file to use as the merge base.}
 
-\item{reset}{Ignore a pending override and merge from the step defaults.}
+\item{reset}{Ignore a pending override and merge from the step defaults.
+Without \code{reset}, an override of a map step whose pending submission is a
+continuation (\code{repeat}) keeps the continuation's slice.}
+
+\item{on_failure}{Optional \code{"stop"} or \code{"continue"}: what the workflow does
+if this submission fails. \code{NULL} keeps the value of the merge base.}
 }
 \value{
 The captured \verb{swf override} output, invisibly.

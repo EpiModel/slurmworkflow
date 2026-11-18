@@ -11,7 +11,8 @@ create_workflow(wf_name, default_sbatch_opts, wf_common_dir = "workflows")
 
 \item{default_sbatch_opts}{A named list of default sbatch options for the
 workflow. The \code{partition} option is mandatory. Options \code{dependency},
-\code{job-name}, \code{output}, and \code{parsable} are managed by the engine and refused.}
+\code{job-name}, \code{output}, \code{parsable}, \code{export}, and \code{export-file} are managed
+by the engine and refused.}
 
 \item{wf_common_dir}{Path to the directory where workflows are stored.}
 }

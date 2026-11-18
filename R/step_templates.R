@@ -79,6 +79,11 @@ helper_use_setup_lines <- function(instructions, setup_lines) {
 #' session on the HPC. Every value required by the function must be passed as an
 #' argument or loaded by the function itself.
 #'
+#' A function defined in the global environment is serialized without that
+#' environment: the objects it uses from there do not exist when the step runs.
+#' A warning names them when the function is created at build time (requires
+#' the `codetools` package).
+#'
 #' @param what The R function to be run by the workflow step.
 #' @param args A list of arguments to the function call.
 #' @inheritParams step_tmpl_rscript
@@ -86,6 +91,7 @@ helper_use_setup_lines <- function(instructions, setup_lines) {
 #' @inheritSection step_tmpl_bash_lines Step Templates
 #' @export
 step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
+  warn_global_function(what, "what", "args")
   do_call_data <- list(what = what, args = args)
 
   function(instructions_script, wf_vars, ...) {
@@ -114,12 +120,25 @@ step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
 #' @param max_array_size Maximum number of array jobs submitted at once. If the
 #'   map is larger, the first array task writes a continuation for the next
 #'   slice.
+#' @param array_throttle Optional positive whole number `k`: at most `k` array
+#'   tasks run simultaneously. Appended as `%k` to every `array` option of the
+#'   step, including continuations and [set_map_size()] overrides. Do not set
+#'   `array` in `sbatch_opts` for a map step: it conflicts with the template.
+#'
+#' @section Array tasks:
+#' Each task maps its position `pos = data.map.offset + SLURM_ARRAY_TASK_ID`
+#' (0-based) to item `pos + 1`. A task fails, before doing any work, when the
+#' submission's `data.map.*` entries are invalid or when the array does not
+#' cover exactly the expected slice (`0` to
+#' `min(max_array_size, total - offset) - 1`), for example after an override of
+#' `array` that is inconsistent with the map data.
 #' @inheritParams step_tmpl_rscript
 #' @inherit step_tmpl_bash_lines return
 #' @inheritSection step_tmpl_bash_lines Step Templates
 #' @export
 step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
-                          max_array_size = Inf) {
+                          max_array_size = Inf, array_throttle = NULL) {
+  warn_global_function(FUN, "FUN", "MoreArgs")
   dots <- list(...)
   if (length(dots) == 0L) {
     stop("`step_tmpl_map` requires at least one iterator.", call. = FALSE)
@@ -138,6 +157,18 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
     stop("`max_array_size` must be a positive whole number or `Inf`.",
          call. = FALSE)
   }
+  throttle <- ""
+  if (!is.null(array_throttle)) {
+    if (length(array_throttle) != 1L || !is.numeric(array_throttle) ||
+        !is.finite(array_throttle) || array_throttle < 1 ||
+        array_throttle != floor(array_throttle)) {
+      stop("`array_throttle` must be NULL or a positive whole number.",
+           call. = FALSE)
+    }
+    throttle <- paste0(
+      "%", format(array_throttle, scientific = FALSE, trim = TRUE)
+    )
+  }
   maximum <- min(max_array_size, n_items)
   map_data <- list(FUN = FUN, dots = dots, MoreArgs = MoreArgs)
 
@@ -152,7 +183,8 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
     list(
       sbatch_opts = list(
         array = paste0(
-          "0-", format(maximum - 1, scientific = FALSE, trim = TRUE)
+          "0-", format(maximum - 1, scientific = FALSE, trim = TRUE),
+          throttle
         )
       ),
       data = list(
@@ -190,13 +222,41 @@ step_tmpl_do_call_script <- function(r_script, args = list(),
 #' @inheritSection step_tmpl_bash_lines Step Templates
 #' @export
 step_tmpl_map_script <- function(r_script, ..., MoreArgs = NULL,
-                                 setup_lines = NULL, max_array_size = Inf) {
+                                 setup_lines = NULL, max_array_size = Inf,
+                                 array_throttle = NULL) {
   f <- function(...) with(list(...), source(r_script, local = TRUE))
   step_tmpl_map(
     FUN = f,
     ...,
     MoreArgs = MoreArgs,
     setup_lines = setup_lines,
-    max_array_size = max_array_size
+    max_array_size = max_array_size,
+    array_throttle = array_throttle
   )
+}
+
+# Warn when a serialized function relies on objects of the global environment:
+# they are not saved with it and do not exist in the step's R session.
+#' @keywords internal
+#' @noRd
+warn_global_function <- function(f, argument, pass_through) {
+  if (!is.function(f) || is.primitive(f) ||
+      !identical(environment(f), globalenv()) ||
+      !requireNamespace("codetools", quietly = TRUE)) {
+    return(invisible(character()))
+  }
+  variables <- codetools::findGlobals(f, merge = FALSE)[["variables"]]
+  used <- variables[vapply(
+    variables, exists, logical(1L), envir = globalenv(), inherits = FALSE
+  )]
+  if (length(used) > 0L) {
+    warning(
+      "`", argument, "` is defined in the global environment and uses ",
+      "objects defined there: ", paste0("`", used, "`", collapse = ", "),
+      ". They will not exist when the step runs; pass them through `",
+      pass_through, "`.",
+      call. = FALSE
+    )
+  }
+  invisible(used)
 }

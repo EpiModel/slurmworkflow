@@ -9,7 +9,8 @@ step_tmpl_map(
   ...,
   MoreArgs = NULL,
   setup_lines = NULL,
-  max_array_size = Inf
+  max_array_size = Inf,
+  array_throttle = NULL
 )
 }
 \arguments{
@@ -26,6 +27,11 @@ load the required modules.}
 \item{max_array_size}{Maximum number of array jobs submitted at once. If the
 map is larger, the first array task writes a continuation for the next
 slice.}
+
+\item{array_throttle}{Optional positive whole number \code{k}: at most \code{k} array
+tasks run simultaneously. Appended as \verb{\%k} to every \code{array} option of the
+step, including continuations and \code{\link[=set_map_size]{set_map_size()}} overrides. Do not set
+\code{array} in \code{sbatch_opts} for a map step: it conflicts with the template.}
 }
 \value{
 A template function to be used by \code{add_workflow_step()}.
@@ -36,6 +42,16 @@ Large maps are split into sequential one-shot submissions. No environment is
 exported through sbatch; map offsets and totals are read from the resolved
 SWF submission.
 }
+\section{Array tasks}{
+
+Each task maps its position \code{pos = data.map.offset + SLURM_ARRAY_TASK_ID}
+(0-based) to item \code{pos + 1}. A task fails, before doing any work, when the
+submission's \verb{data.map.*} entries are invalid or when the array does not
+cover exactly the expected slice (\code{0} to
+\code{min(max_array_size, total - offset) - 1}), for example after an override of
+\code{array} that is inconsistent with the map data.
+}
+
 \section{Step Templates}{
 
 Step templates are function factories. The returned function writes the step

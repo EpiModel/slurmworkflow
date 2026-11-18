@@ -11,7 +11,8 @@ load_workflow(wf_root = NULL)
 }
 \value{
 A list with \code{name}, \code{root}, \code{default_sbatch_opts}, and \code{steps}. Each
-step contains \code{number}, \code{name}, \code{next}, \code{sbatch_opts}, and \code{data}.
+step contains \code{number}, \code{name}, \code{next}, \code{sbatch_opts}, \code{data}, and
+\code{on_failure}.
 }
 \description{
 Load a Workflow Summary From Files or the Running Workflow Environment

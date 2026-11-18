@@ -41,8 +41,8 @@ test_that("SWF validation rejects malformed input", {
   expect_error(write_swf(c(a = "x", a = "y"), path), "unique")
   expect_error(write_swf(c(a = "one\ntwo"), path), "newlines")
   expect_error(write_swf(c(a = "one\rtwo"), path), "newlines")
-  expect_error(write_swf(c(a = NA_character_), path), "non-missing")
-  expect_error(write_swf(list(a = 1:2), path), "scalars")
+  expect_error(write_swf(c(a = NA_character_), path), "`a`.*missing")
+  expect_error(write_swf(list(a = 1:2), path), "`a`.*length one")
 
   bad_files <- c(
     header = "not-swf\na=b\n",
@@ -55,4 +55,35 @@ test_that("SWF validation rejects malformed input", {
     writeLines(bad_files[[i]], path, sep = "")
     expect_error(read_swf(path), "SWF|swf|Duplicate|carriage")
   }
+})
+
+test_that("SWF values accept only scalar character and numeric values", {
+  expect_identical(format_swf_value(3L, "opt.time"), "3")
+  expect_identical(format_swf_value(1e5, "opt.time"), "100000")
+  expect_identical(format_swf_value(0.1 + 0.2, "data.x"), "0.3")
+  expect_identical(format_swf_value(1 / 3, "data.x"), "0.333333333333333")
+  expect_identical(format_swf_value("", "data.empty"), "")
+  expect_identical(format_swf_value("", "next"), "")
+
+  expect_error(format_swf_value(TRUE, "opt.exclusive"),
+               "`opt.exclusive` \\(logical\\)")
+  expect_error(format_swf_value(factor("a"), "opt.qos"),
+               "`opt.qos` \\(factor\\)")
+  expect_error(format_swf_value(list(2), "opt.time"),
+               "`opt.time` \\(list\\)")
+  expect_error(format_swf_value(data.frame(a = 1), "data.df"),
+               "`data.df` \\(data.frame\\)")
+  expect_error(format_swf_value(Sys.Date(), "data.day"),
+               "`data.day` \\(Date\\)")
+  expect_error(format_swf_value(NA_real_, "opt.time"), "`opt.time`.*missing")
+  expect_error(format_swf_value(Inf, "opt.time"), "`opt.time`.*finite")
+  expect_error(format_swf_value(character(), "opt.time"), "length one")
+  expect_error(format_swf_value("", "opt.comment"),
+               "`opt.comment`.*must not be empty")
+  expect_error(format_swf_value(TRUE), "SWF value \\(logical\\)")
+
+  path <- file.path(withr::local_tempdir(), "bad.swf")
+  expect_error(write_swf(list(opt.exclusive = TRUE), path), "opt.exclusive")
+  expect_error(write_swf(list(opt.comment = ""), path), "opt.comment")
+  expect_false(file.exists(path))
 })

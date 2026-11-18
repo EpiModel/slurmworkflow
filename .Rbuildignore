@@ -12,3 +12,4 @@
 ^docs$
 ^pkgdown$
 ^design$
+^CLAUDE\.md$

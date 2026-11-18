@@ -9,6 +9,10 @@ function sbatch_error {
 }
 
 [[ -n "${FAKE_SLURM_DIR:-}" ]] || sbatch_error 'FAKE_SLURM_DIR is required'
+# Test hook: refuse every submission.
+if [[ "${FAKE_SLURM_SBATCH_FAIL:-}" == 1 ]]; then
+  sbatch_error 'Batch job submission failed: Invalid partition name specified'
+fi
 mkdir -p "$FAKE_SLURM_DIR/jobs"
 
 ORIGINAL_ARGV=("$@")

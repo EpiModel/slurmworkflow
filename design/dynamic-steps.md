@@ -171,7 +171,9 @@ else `current.swf`'s `id`):
 ## Controller (`swf.d/controller.sh`)
 
 Args: `<root> <run_id> first <N>_<name>` or
-`<root> <run_id> after <N>_<name> <submission path>`.
+`<root> <run_id> after <N>_<name> <submission path> <job id>` (round 2: the
+finished job id; a failure marker of that job stops the run unless
+`on_failure=continue`, see `fixes-round2.md`).
 `#SBATCH`: `--open-mode=append --time=10 --nodes=1 --cpus-per-task=1
 --mem-per-cpu=500 --export=NONE` (fixed). Logs every decision to stdout
 (the controller log), including the full `sbatch` argument list.
@@ -198,7 +200,7 @@ Args: `<root> <run_id> first <N>_<name>` or
    Then submit the next controller: `sbatch --parsable
    --dependency=afterany:<job id> --job-name=<wf>_ctrl
    --output=<log dir>/controller.out <ctrl opt args...> swf.d/controller.sh
-   <root> <run_id> after <N>_<name> <file>`. Append `submit`.
+   <root> <run_id> after <N>_<name> <file> <job id>`. Append `submit`.
    If `sbatch` fails for the step: event `error reason=sbatch_failed`, exit 1.
 7. Re-read `current.swf`: if it now has `stopped=`, `scancel` both new jobs.
 
@@ -213,7 +215,9 @@ environment above, runs the payload in a child shell:
 `bash -e "$SWF__INSTRUCTIONS_SCRIPT"`. On a non-zero exit, writes
 `run/<id>/failed/<id>` (`<SLURM_ARRAY_JOB_ID>_<SLURM_ARRAY_TASK_ID>` for
 arrays, else `SLURM_JOB_ID`) containing the exit code, and exits with it.
-No hand-off: `job.sh` never calls `sbatch`.
+No hand-off: `job.sh` never calls `sbatch`. Round 2: pre-flight errors and
+TERM/INT/HUP (128 + signal) also write the marker; the payload runs in the
+background so that a trapped signal is handled at once.
 
 ## R side
 
