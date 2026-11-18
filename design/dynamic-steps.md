@@ -60,7 +60,7 @@ or `1e+05`): `format(x, scientific = FALSE, trim = TRUE)`.
 ```
 workflows/<wf>/
 ├── swf                                 executable, the only user/job entry point
-├── SWF/
+├── swf.d/
 │   ├── lib.sh                          bash library (sourced by swf, controller.sh, job.sh)
 │   ├── controller.sh                   controller job (fixed #SBATCH lines only)
 │   ├── job.sh                          generic step job (#SBATCH --export=NONE, --open-mode=append only)
@@ -86,7 +86,7 @@ workflows/<wf>/
 - `<N>` = build order, 1-based, not zero padded. `<name>` matches
   `^[A-Za-z][A-Za-z0-9_-]*$` (never numeric, safe as a file name), unique in
   the workflow, default `step_<N>`. The directory is the only place the name
-  is stored. Resolution: list `SWF/steps/*/`, split each base name at the
+  is stored. Resolution: list `swf.d/steps/*/`, split each base name at the
   **first** `_` → `(N, name)`. A name argument matches `name` exactly; an
   all-digit argument matches `N`. Anything else is an error.
 - `run_id` = `$(date +%Y%m%d-%H%M%S)-$$` (created by `swf start`).
@@ -94,7 +94,7 @@ workflows/<wf>/
   values never contain spaces. Fields always start with `time=<ISO-8601>
   event=<start|submit|claim|skip|end|stop|error>`; others by event:
   - `start first=<N>_<name> ctrl=<id>`
-  - `submit step=<N>_<name> job=<id> ctrl=<next ctrl id> by=<this ctrl id or start> from=<path relative to SWF/>`
+  - `submit step=<N>_<name> job=<id> ctrl=<next ctrl id> by=<this ctrl id or start> from=<path relative to swf.d/>`
   - `claim file=<used/...> by=<ctrl id>`
   - `skip step=<N>_<name> by=<ctrl id>`
   - `end by=<ctrl id>` (no step left)
@@ -193,7 +193,7 @@ Args: `<root> <run_id> first <N>_<name>` or
    `error reason=skip_loop`.
 5. End: event `end`, exit 0.
 6. Submit T: `sbatch --parsable --job-name=<wf>_<N>_<name>
-   --output=<log dir>/<N>_<name>_%A_%a.out <opt args...> SWF/job.sh <root>
+   --output=<log dir>/<N>_<name>_%A_%a.out <opt args...> swf.d/job.sh <root>
    <run_id> <N>_<name> <absolute file path>`. Strip `;cluster` from the id.
    Then submit the next controller: `sbatch --parsable
    --dependency=afterany:<job id> --job-name=<wf>_ctrl
