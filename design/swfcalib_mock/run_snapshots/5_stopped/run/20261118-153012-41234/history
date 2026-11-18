@@ -1,0 +1,5 @@
+time=2026-11-18T15:30:12 event=start first=renv_restore ctrl=4815360
+time=2026-11-18T15:30:40 event=submit step=1_renv_restore job=4815361 ctrl=4815362 by=4815360 from=steps/1_renv_restore/step.swf
+time=2026-11-18T15:41:05 event=submit step=2_calib_step1 job=4815377 ctrl=4815378 by=4815362 from=steps/2_calib_step1/step.swf
+time=2026-11-18T15:52:31 event=submit step=3_calib_step2 job=4815391 ctrl=4815392 by=4815378 from=used/4815378_override_calib_step2.swf
+time=2026-11-18T16:05:00 event=stop cancelled=4815392,4815391

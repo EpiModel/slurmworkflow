@@ -1,0 +1,9 @@
+#!swf-v1
+# Engine constants shipped with slurmworkflow, identical in every workflow.
+# Read by the `swf` helper when it merges an override with a step's options:
+# setting one option of an `exclusive.*` group removes the others.
+exclusive.mem=mem mem-per-cpu mem-per-gpu
+exclusive.threads=extra-node-info hint threads-per-core ntasks-per-core
+# Options managed by the engine itself: an override may not set them.
+reserved=dependency job-name output parsable
+valid=account acctg-freq array batch bb bbf begin chdir cluster-constraint clusters comment constraint container contiguous core-spec cores-per-socket cpu-freq cpus-per-gpu cpus-per-task deadline delay-boot dependency distribution error exclude exclusive export export-file extra-node-info get-user-env gid gpu-bind gpu-freq gpus gpus-per-node gpus-per-socket gpus-per-task gres gres-flags help hint hold ignore-pbs input job-name kill-on-invalid-dep licenses mail-type mail-user mcs-label mem mem-bind mem-per-cpu mem-per-gpu mincpus network nice no-requeue nodefile nodelist nodes ntasks ntasks-per-core ntasks-per-gpu ntasks-per-node ntasks-per-socket open-mode output overcommit oversubscribe parsable partition power priority profile propagate qos quiet reboot requeue reservation signal sockets-per-node spread-job switches test-only thread-spec threads-per-core time time-min tmp uid usage use-min-nodes verbose wait wait-all-nodes wckey wrap
