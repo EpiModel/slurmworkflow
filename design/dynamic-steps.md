@@ -168,7 +168,7 @@ else `current.swf`'s `id`):
   ~60 s with an error); removed with a trap. Used by `next`, `override` and
   by the controller's claim.
 
-## Controller (`SWF/controller.sh`)
+## Controller (`swf.d/controller.sh`)
 
 Args: `<root> <run_id> first <N>_<name>` or
 `<root> <run_id> after <N>_<name> <submission path>`.
@@ -197,7 +197,7 @@ Args: `<root> <run_id> first <N>_<name>` or
    <run_id> <N>_<name> <absolute file path>`. Strip `;cluster` from the id.
    Then submit the next controller: `sbatch --parsable
    --dependency=afterany:<job id> --job-name=<wf>_ctrl
-   --output=<log dir>/controller.out <ctrl opt args...> SWF/controller.sh
+   --output=<log dir>/controller.out <ctrl opt args...> swf.d/controller.sh
    <root> <run_id> after <N>_<name> <file>`. Append `submit`.
    If `sbatch` fails for the step: event `error reason=sbatch_failed`, exit 1.
 7. Re-read `current.swf`: if it now has `stopped=`, `scancel` both new jobs.
