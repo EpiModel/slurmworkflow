@@ -2,8 +2,13 @@
 set -e
 
 [[ -n "${FAKE_SLURM_DIR:-}" ]] || { printf 'squeue: error: FAKE_SLURM_DIR is required\n' >&2; exit 1; }
-# Test hook: behave like squeue when slurmctld is unreachable or ids are purged.
+# Test hooks: behave like squeue when slurmctld is unreachable, or when every
+# requested job id was purged (real Slurm exits 1 with "Invalid job id").
 if [[ "${FAKE_SLURM_SQUEUE_FAIL:-}" == 1 ]]; then
+  printf 'slurm_load_jobs error: Unable to contact slurm controller (connect failure)\n' >&2
+  exit 1
+fi
+if [[ "${FAKE_SLURM_SQUEUE_PURGED:-}" == 1 ]]; then
   printf 'slurm_load_jobs error: Invalid job id specified\n' >&2
   exit 1
 fi

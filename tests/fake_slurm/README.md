@@ -43,8 +43,12 @@ run. Output is appended after substituting `%x`, `%j`, `%A`, and `%a`.
 
 Environment variables read by the fake commands, to test failure handling:
 
-- `FAKE_SLURM_SQUEUE_FAIL=1`: `squeue` prints `slurm_load_jobs error: Invalid
-  job id specified` and exits 1 (purged ids, unreachable slurmctld).
+- `FAKE_SLURM_SQUEUE_FAIL=1`: `squeue` prints `slurm_load_jobs error: Unable
+  to contact slurm controller (connect failure)` and exits 1 (slurmctld down:
+  `swf` must treat the run as live).
+- `FAKE_SLURM_SQUEUE_PURGED=1`: `squeue` prints `slurm_load_jobs error:
+  Invalid job id specified` and exits 1, as real Slurm does when every
+  requested id was purged after `MinJobAge` (`swf` reads it as "not queued").
 - `FAKE_SLURM_SCANCEL_FAIL=1`: `scancel` cancels nothing and exits 1.
 - `FAKE_SLURM_SBATCH_FAIL=1`: `sbatch` refuses every submission.
 - `FAKE_SLURM_KILL_AFTER=<seconds>` (read by `fake_slurm_run`): a job, or array

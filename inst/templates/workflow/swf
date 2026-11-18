@@ -134,6 +134,12 @@ function run_squeue {
   SQUEUE_ERR="$(< "$err_file")"
   rm -f "$err_file"
   [[ -n "$SQUEUE_ERR" ]] || SQUEUE_ERR="squeue exited with status $status"
+  # Slurm purges finished jobs after MinJobAge; `squeue -j` then fails with
+  # "Invalid job id specified" when none of the ids is known: none is queued.
+  if (( status != 0 )) && [[ "$SQUEUE_ERR" == *'Invalid job id specified'* ]]; then
+    SQUEUE_OUT=''
+    return 0
+  fi
   return "$status"
 }
 

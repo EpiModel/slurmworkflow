@@ -794,7 +794,7 @@ function test_squeue_failure {
   CURRENT_BEFORE="$(< "$WF/swf.d/run/current.swf")"
   if FAKE_SLURM_SQUEUE_FAIL=1 "$WF/swf" start > /dev/null 2> "$CASE/start.err"; then fail 'start ignored an unknown queue state'; fi
   assert_grep 'cannot query the queue' "$CASE/start.err"
-  assert_grep 'Invalid job id specified' "$CASE/start.err"
+  assert_grep 'Unable to contact slurm controller' "$CASE/start.err"
   assert_grep 'swf start --force' "$CASE/start.err"
   assert_eq "$CURRENT_BEFORE" "$(< "$WF/swf.d/run/current.swf")" 'current run unchanged'
   assert_eq 1 "$(find "$WF/swf.d/run" -mindepth 1 -maxdepth 1 -type d | wc -l)" 'no second run directory'
@@ -808,6 +808,26 @@ function test_squeue_failure {
   # --force still replaces the run.
   RUN_ID="$(FAKE_SLURM_SQUEUE_FAIL=1 "$WF/swf" start --force 2> /dev/null)" || fail 'start --force failed'
   [[ "$RUN_ID" != "$FIRST_RUN" ]] || fail '--force did not create a new run'
+}
+
+function test_squeue_purged_ids {
+  case_init squeue-purged
+  new_workflow wf
+  write_step 1 boom
+  write_step 2 after
+  write_payload 1 boom <<'EOF'
+exit 4
+EOF
+  start_workflow
+  must fake_slurm_run > /dev/null
+  assert_grep 'reason=step_failed:1_boom' "$WF/swf.d/run/$RUN_ID/history"
+  # Every id of the finished run is purged: squeue fails with "Invalid job id".
+  STATUS="$(FAKE_SLURM_SQUEUE_PURGED=1 "$WF/swf" status 2>&1)" || fail 'status failed on purged ids'
+  assert_contains "$STATUS" 'Queue: not in queue'
+  OLD_RUN="$RUN_ID"
+  RUN_ID="$(FAKE_SLURM_SQUEUE_PURGED=1 "$WF/swf" start 2> "$CASE/start.err")" || fail 'start refused a run whose jobs were purged'
+  [[ "$RUN_ID" != "$OLD_RUN" ]] || fail 'no new run'
+  must "$WF/swf" stop
 }
 
 function test_self_override_keeps_continuation {
@@ -1185,6 +1205,7 @@ run_test 'failed first sbatch leaves no run' test_failed_first_sbatch
 run_test 'start lock refuses a concurrent start' test_start_lock
 run_test 'CRLF fix leaves user files alone' test_crlf_scope
 run_test 'swf stop reports scancel failures' test_stop_reports_scancel_failure
+run_test 'purged job ids count as not queued' test_squeue_purged_ids
 run_test 'first controller waits for swf start to write current.swf' test_first_controller_waits_for_start
 
 printf '\nTest summary\n'
