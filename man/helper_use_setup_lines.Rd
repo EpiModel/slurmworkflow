@@ -2,18 +2,18 @@
 % Please edit documentation in R/step_templates.R
 \name{helper_use_setup_lines}
 \alias{helper_use_setup_lines}
-\title{Helper Function to Consistently Write Setup Lines}
+\title{Helper Function to Consistently Prepend Setup Lines}
 \usage{
 helper_use_setup_lines(instructions, setup_lines)
 }
 \arguments{
-\item{instructions}{Vector of bash lines to be run by the workflow step}
+\item{instructions}{Vector of bash lines to be run by the workflow step.}
 
-\item{setup_lines}{Vector of bash lines to be run before the rest of the
-step instructions.
-
-@return The modified instructions}
+\item{setup_lines}{Vector of bash lines to run before the other instructions.}
+}
+\value{
+The modified instructions.
 }
 \description{
-Helper Function to Consistently Write Setup Lines
+Helper Function to Consistently Prepend Setup Lines
 }

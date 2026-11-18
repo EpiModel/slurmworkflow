@@ -2,15 +2,15 @@
 % Please edit documentation in R/step_templates.R
 \name{helper_write_instructions}
 \alias{helper_write_instructions}
-\title{Helper Function to Consistently Write Instructions to the Instruction Script}
+\title{Helper Function to Consistently Write the Instruction Script}
 \usage{
 helper_write_instructions(instructions, instructions_script)
 }
 \arguments{
-\item{instructions}{Vector of bash lines to be run by the workflow step}
+\item{instructions}{Vector of bash lines to be run by the workflow step.}
 
-\item{instructions_script}{Path to the instructions script}
+\item{instructions_script}{Path to the instructions script.}
 }
 \description{
-Helper Function to Consistently Write Instructions to the Instruction Script
+Helper Function to Consistently Write the Instruction Script
 }

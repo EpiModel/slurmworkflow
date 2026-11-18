@@ -2,35 +2,40 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_map_script}
 \alias{step_tmpl_map_script}
-\title{Step Template to Run an R Script With a Set of Arguments}
+\title{Step Template to Map an R Script Over Arguments}
 \usage{
-step_tmpl_map_script(r_script, ..., MoreArgs = NULL, setup_lines = NULL)
+step_tmpl_map_script(
+  r_script,
+  ...,
+  MoreArgs = NULL,
+  setup_lines = NULL,
+  max_array_size = Inf
+)
 }
 \arguments{
-\item{r_script}{The R script to be run by the workflow step}
+\item{r_script}{The R script to be run by the workflow step.}
 
-\item{...}{arguments to vectorize over (vectors or lists of strictly
-positive length, or all of zero length).  See also ‘Details’.}
+\item{...}{Vectors or lists to iterate over. At least one iterator is
+required, all iterators must have the same non-zero length.}
 
-\item{MoreArgs}{a \code{list} of arguments to the function call. The \emph{names}
-attribute of \code{args} gives the argument names.}
+\item{MoreArgs}{A list of fixed arguments passed to every function call.}
 
-\item{setup_lines}{(optional) a vector of bash lines to be run first.
-This can be used to load the required modules (like R, python, etc).}
+\item{setup_lines}{Optional vector of bash lines to run first, typically to
+load the required modules.}
+
+\item{max_array_size}{Maximum number of array jobs submitted at once. If the
+map is larger, the first array task writes a continuation for the next
+slice.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
-Step Template to Run an R Script With a Set of Arguments
+Step Template to Map an R Script Over Arguments
 }
-\section{Step Template}{
+\section{Step Templates}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

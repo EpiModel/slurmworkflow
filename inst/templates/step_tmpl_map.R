@@ -1,4 +1,4 @@
-# Time Calulation --------------------------------------------------------------
+# Time Calculation --------------------------------------------------------------
 swf__start_time <- Sys.time()
 message(
   "\n###################\n",
@@ -6,60 +6,70 @@ message(
   format(swf__start_time), "\n"
 )
 
-# Step Template ----------------------------------------------------------------
-step_dir <- Sys.getenv("SWF__CUR_DIR")
-swf__tmpl_elts <- readRDS(fs::path(step_dir, "map.rds"))
-rm(step_dir)
+# Read the payload and the exact submission used for this array task ------------
+swf__step_dir <- Sys.getenv("SWF__CUR_DIR")
+swf__tmpl_elts <- readRDS(fs::path(swf__step_dir, "map.rds"))
+swf__submission <- slurmworkflow::get_workflow_submission()
+swf__offset <- as.numeric(swf__submission[["data.map.offset"]])
+swf__total <- as.numeric(swf__submission[["data.map.total"]])
+swf__maximum <- as.numeric(swf__submission[["data.map.max_array_size"]])
+swf__task_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+swf__task_min <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_MIN"))
+swf__idx <- swf__offset + swf__task_id + 1
 
-array_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-array_max <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_MAX"))
-array_offset <- as.numeric(Sys.getenv("SWF__ARRAY_OFFSET"))
-corrected_id <- array_id + array_offset
+if (swf__idx > swf__total) {
+  message("Map index ", swf__idx, " is beyond total ", swf__total,
+          "; nothing to do.")
+  quit(save = "no", status = 0)
+}
 
-# On the last array element
-if (array_id == array_max) {
-  length_map <- max(vapply(swf__tmpl_elts[["dots"]], length, 0))
-  # Start the next array slice if not finished
-  if (corrected_id < length_map) {
-    next_slice_end <- min(
-      length_map - corrected_id - 1,
-      swf__tmpl_elts[["array_size"]]
+# The first task writes the next one-shot array slice before doing its own work.
+if (swf__task_id == swf__task_min) {
+  swf__slice <- min(swf__maximum, swf__total - swf__offset)
+  if (swf__offset + swf__slice < swf__total) {
+    swf__new_offset <- swf__offset + swf__slice
+    swf__next_size <- min(swf__maximum, swf__total - swf__new_offset)
+    swf__array <- swf__submission[["opt.array"]]
+    swf__throttle <- regmatches(
+      swf__array,
+      regexpr("%[0-9]+$", swf__array)
     )
-    sbatch_opts <- list(
-      "array" = paste0("0-", next_slice_end),
-      "export" = paste0("SWF__ARRAY_OFFSET=", corrected_id + 1)
+    if (length(swf__throttle) == 0L) {
+      swf__throttle <- ""
+    }
+    slurmworkflow::override_workflow_step(
+      slurmworkflow::get_current_workflow_step_name(),
+      sbatch_opts = list(
+        array = paste0(
+          "0-",
+          format(swf__next_size - 1, scientific = FALSE, trim = TRUE),
+          swf__throttle
+        )
+      ),
+      data = list(map.offset = swf__new_offset, map.total = swf__total),
+      repeat_step = TRUE,
+      from = Sys.getenv("SWF_SUBMISSION")
     )
-    slurmworkflow::change_next_workflow_step(
-      next_step = slurmworkflow::get_current_workflow_step(),
-      sbatch_opts = sbatch_opts
-    )
-    rm(length_map, next_slice_end, sbatch_opts)
   }
 }
 
-# Create the `swf__tmpl_elts` for this array job
-swf__tmpl_elts[["args"]] <- c(
-  lapply(swf__tmpl_elts[["dots"]], function(x) x[[corrected_id]]),
+# Create the arguments for this array element ----------------------------------
+swf__args <- c(
+  lapply(swf__tmpl_elts[["dots"]], function(x) x[[swf__idx]]),
   swf__tmpl_elts[["MoreArgs"]]
 )
-# Cleanup
-rm(array_id, array_max, array_offset, corrected_id)
-swf__tmpl_elts[["dots"]] <- NULL
-swf__tmpl_elts[["MoreArgs"]] <- NULL
+swf__FUN <- swf__tmpl_elts[["FUN"]]
+rm(swf__tmpl_elts, swf__step_dir, swf__submission)
 gc()
 message("###################\n")
 
-# The actual function call
-do.call(
-  what = swf__tmpl_elts[["FUN"]],
-  args = swf__tmpl_elts[["args"]]
-)
+do.call(what = swf__FUN, args = swf__args)
 
-# Display the Warnings ---------------------------------------------------------
+# Display warnings --------------------------------------------------------------
 message("\n###################\n")
 message(paste0(capture.output(summary(warnings())), collapse = "\n"))
 
-# Time Calulation --------------------------------------------------------------
+# Time Calculation --------------------------------------------------------------
 message(
   "\n###################\n",
   "Workflow ran for:\n",

@@ -1,13 +1,11 @@
-# Helper function to manipulate the worflow summaries, read and write them from
-# a YAML file.
+# Workflow summaries are views of the files on disk, never serialized state.
 
 #' @keywords internal
 #' @noRd
 new_summary <- function(wf_root, sbatch_opts) {
   list(
-    name = fs::path_file(wf_root),
+    name = basename(wf_root),
     root = wf_root,
-    n_steps = 0,
     default_sbatch_opts = sbatch_opts,
     steps = list()
   )
@@ -15,46 +13,75 @@ new_summary <- function(wf_root, sbatch_opts) {
 
 #' @keywords internal
 #' @noRd
-add_summary_step <- function(wf_summary, sbatch_opts, step_name) {
-  step_number <- wf_summary[["n_steps"]] + 1
-  wf_summary[["steps"]][[step_number]] <- list(
-    name = step_name,
-    number = step_number,
-    sbatch_opts = sbatch_opts
+summary_from_files <- function(wf_root) {
+  root <- fs::path(wf_root)
+  workflow <- read_swf(fs::path(root, "swf.d", "workflow.swf"))
+  steps_dir <- fs::path(root, "swf.d", "steps")
+  step_dirs <- if (fs::dir_exists(steps_dir)) {
+    fs::dir_ls(steps_dir, type = "directory")
+  } else {
+    character()
+  }
+
+  steps <- list()
+  if (length(step_dirs) > 0L) {
+    directories <- basename(step_dirs)
+    pattern <- "^([0-9]+)_([A-Za-z][A-Za-z0-9_-]*)$"
+    if (any(!grepl(pattern, directories))) {
+      stop("Invalid step directory under ", steps_dir, call. = FALSE)
+    }
+    numbers <- as.integer(sub(pattern, "\\1", directories))
+    names <- sub(pattern, "\\2", directories)
+    if (anyDuplicated(numbers) || anyDuplicated(names)) {
+      stop("Step numbers and names must be unique.", call. = FALSE)
+    }
+
+    steps <- lapply(order(numbers), function(i) {
+      contents <- read_swf(fs::path(step_dirs[[i]], "step.swf"))
+      list(
+        number = numbers[[i]],
+        name = names[[i]],
+        `next` = if ("next" %in% base::names(contents)) {
+          unname(contents[["next"]])
+        },
+        sbatch_opts = swf_prefixed_list(contents, "opt."),
+        data = swf_prefixed_list(contents, "data.")
+      )
+    })
+  }
+
+  list(
+    name = basename(root),
+    root = root,
+    default_sbatch_opts = swf_prefixed_list(workflow, "opt."),
+    steps = steps
   )
-  wf_summary[["n_steps"]] <- step_number
-  wf_summary
 }
 
 #' @keywords internal
 #' @noRd
-write_summary <- function(wf_summary) {
-  wf_summary_orig <- wf_summary
-  wf_summary_path <- fs::path(wf_summary[["root"]], "workflow.yaml")
-  wf_summary[["root"]] <- NULL
-  yaml::write_yaml(wf_summary, wf_summary_path)
-  invisible(wf_summary_orig)
+swf_prefixed_list <- function(x, prefix) {
+  keep <- startsWith(names(x), prefix)
+  values <- as.list(unname(x[keep]))
+  names(values) <- substring(names(x[keep]), nchar(prefix) + 1L)
+  values
 }
 
 #' @keywords internal
 #' @noRd
-read_summary <- function(wf_summary_path) {
-  wf_summary <- yaml::read_yaml(wf_summary_path)
-  wf_summary[["root"]] <- fs::path_dir(wf_summary_path)
-  wf_summary
-}
-
-#' @keywords internal
-#' @noRd
-get_last_step_summary <- function(wf_summary) {
-  n_step <- length(wf_summary[["steps"]])
-  wf_summary[["steps"]][[n_step]]
-}
-
-#' @keywords internal
-#' @noRd
-mutate_last_step_summary <- function(wf_summary, last_step) {
-  n_step <- length(wf_summary[["steps"]])
-  wf_summary[["steps"]][[n_step]] <- last_step
-  wf_summary
+resolve_summary_step <- function(wf_summary, step) {
+  if (length(step) != 1L || is.na(step)) {
+    stop("`step` must identify exactly one step.", call. = FALSE)
+  }
+  steps <- wf_summary[["steps"]]
+  if (is.numeric(step) || (is.character(step) && grepl("^[0-9]+$", step))) {
+    number <- as.integer(step)
+    matches <- which(vapply(steps, function(x) x[["number"]], integer(1L)) == number)
+  } else {
+    matches <- which(vapply(steps, function(x) x[["name"]], character(1L)) == step)
+  }
+  if (length(matches) != 1L) {
+    stop("Unknown workflow step: ", step, call. = FALSE)
+  }
+  steps[[matches]]
 }

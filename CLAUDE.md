@@ -1,70 +1,96 @@
 # CLAUDE.md — slurmworkflow
 
-## Project Overview
+## Project overview
 
-**slurmworkflow** is an R package that builds and manages multi-step computational workflows on Slurm-equipped HPC systems. It chains `sbatch` jobs via `--dependency=afterany` so users don't need persistent SSH sessions or long-lived daemons.
+**slurmworkflow** builds and controls multi-step computational workflows on
+Slurm-equipped high-performance computing (HPC) systems. The R package resolves
+workflow designs into `.swf` files; a bash controller chains submissions with
+`sbatch --dependency=afterany`. Runtime control is available through the
+executable `swf` command and thin R wrappers.
 
 - **Author:** Adrien Le Guillou
 - **License:** MIT
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **R requirement:** >= 4.1.0
-- **Hard dependencies:** `fs`, `yaml`
-- **Docs site:** https://epimodel.github.io/slurmworkflow/
+- **Hard dependency:** `fs`
+- **Documentation:** https://epimodel.github.io/slurmworkflow/
 
-## Repository Structure
+Backward compatibility with 0.1.x workflow directories is intentionally not
+supported on this redesign branch.
 
+## Repository structure
+
+```text
+R/
+  workflow.R          create_workflow, add_workflow_step, load_workflow
+  runtime.R           swf wrappers and running-step environment helpers
+  swf.R               base-R, atomic .swf reader/writer
+  step_templates.R    built-in step template factories
+  sbatch_options.R    option validation, reserved and exclusive options
+  wf_summary.R        rebuild summaries from workflow/step files
+  dir.R               workflow and step directory creation
+  env-vars.R          variables supplied to templates at build time
+inst/templates/
+  workflow/           swf and the bash engine copied into every workflow
+  step_tmpl_do_call.R runtime R payload for do-call steps
+  step_tmpl_map.R     runtime R payload for array/map steps
+tests/testthat/       R unit tests; runtime tests use fake Slurm when installed
+design/               dynamic-step design specification and mock files
+vignettes/            main user guide
 ```
-R/                    # Package source
-  workflow.R          # Core API: create_workflow, add_workflow_step, load_workflow, etc.
-  step_templates.R    # All step_tmpl_* functions and helpers
-  sbatch_options.R    # Sbatch option validation (150+ valid options)
-  wf_summary.R        # Workflow YAML I/O
-  dir.R               # Directory creation and template copying
-  env-vars.R          # Environment variable mapping
-  utils.R             # Template variable substitution (simple_brew)
-inst/
-  templates/          # Bash/R template files copied into workflow directories
-tests/testthat/       # Comprehensive test suite
-vignettes/            # Main vignette: slurmworkflow.Rmd
-.github/workflows/    # CI: R-CMD-check, test-coverage, pkgdown
-```
 
-## Key Concepts
+## Workflow model
 
-- **Workflow** — a named directory (`workflows/<name>/`) containing all scripts and metadata to run a sequence of Slurm jobs on an HPC.
-- **Step** — a single `sbatch` submission within a workflow. Steps run sequentially by default via a controller job that chains them.
-- **Step template** — a function factory that defines what a step does. The package exports 7 templates: `step_tmpl_bash_lines`, `step_tmpl_bash_script`, `step_tmpl_rscript`, `step_tmpl_do_call`, `step_tmpl_do_call_script`, `step_tmpl_map`, `step_tmpl_map_script`.
-- **Workflow summary** — an in-memory list (serialized as `workflow.yaml`) that tracks steps, their sbatch options, and the workflow root path.
+- Root `swf` is the only user and job command entry point. Commands include
+  `start`, `stop`, `status`, `log`, `steps`, `runs`, `next`, and `override`.
+- Steps are `swf.d/steps/<N>_<name>/`, where `N` is one-based build order and
+  names match `^[A-Za-z][A-Za-z0-9_-]*$`.
+- `step.swf` is a resolved submission. It contains merged `opt.*`, template
+  `data.*`, and optional `next`. An absent `next` means build order; `next=`
+  means end. Overrides are one-shot and are resolved by `swf override`.
+- `swf.d/workflow.swf` holds defaults and `ctrl.opt.*` controller options.
+  `swf.d/sbatch_rules.swf` records valid, exclusive, and reserved sbatch options.
+- Summaries contain only `name`, `root`, `default_sbatch_opts`, and `steps`;
+  they are rebuilt from files and are never serialized separately.
+- Step payloads get `SWF_ROOT`, run/log locations, `SWF_CMD`, `SWF_CUR`,
+  `SWF_CUR_NAME`, `SWF__CUR_DIR`, `SWF__INSTRUCTIONS_SCRIPT`, and the exact
+  `SWF_SUBMISSION` used by sbatch.
 
-## Development Commands
+## R conventions
+
+- Keep RoxygenNote at **7.3.2**. Use this repository's renv; do not allow a newer
+  global roxygen2 installation to rewrite DESCRIPTION.
+- Tests use testthat edition 3.
+- Sbatch options use long-form names. `partition` is required at workflow
+  creation. `dependency`, `job-name`, `output`, and `parsable` are reserved.
+- Templates implement `function(instructions_script, wf_vars, wf_summary,
+  sbatch_opts, ...)` and return `NULL`, `list()`, or named `sbatch_opts`/`data`.
+- `read_swf()` and `write_swf()` are base R and internal. Values are verbatim,
+  not shell quoted; reject newlines, malformed keys, duplicate keys, and bad
+  headers. Writers use a same-directory temporary file followed by rename.
+- Write integral numbers without scientific notation. Runtime wrappers call
+  `system2(cmd, shQuote(args), stdout = TRUE, stderr = TRUE)` and error on a
+  non-zero status.
+- Map runtime state comes from `data.map.*` in `SWF_SUBMISSION`; do not restore
+  `SWF__ARRAY_OFFSET` or map-specific `--export` options.
+
+## Development commands
+
+From the workspace root, R is provided by pixi and the project renv supplies
+roxygen2:
 
 ```bash
-# Run tests
-Rscript -e 'devtools::test()'
-
-# Check package
-Rscript -e 'devtools::check()'
-
-# Build documentation
-Rscript -e 'devtools::document()'
-
-# Build pkgdown site locally
-Rscript -e 'pkgdown::build_site()'
+pixi run bash -c 'cd slurmworkflow && Rscript -e "devtools::document()"'
+pixi run bash -c 'cd slurmworkflow && NOT_CRAN=true Rscript -e "devtools::test()"'
+pixi run bash -c 'cd slurmworkflow && Rscript -e "devtools::check(document = FALSE, args = \"--no-manual\", error_on = \"never\")"'
+pixi run bash -c 'cd slurmworkflow && Rscript -e "pkgdown::build_site()"'
 ```
 
-## Conventions
-
-- Documentation uses roxygen2 with markdown support (RoxygenNote: 7.3.2).
-- Tests use testthat edition 3.
-- Sbatch options use long-form only (e.g., `"job-name"` not `"-J"`).
-- The `partition` option is mandatory in `default_sbatch_opts`.
-- Step templates are function factories — they return a function that receives `instructions_script`, `wf_vars`, and `...`.
-- Environment variables prefixed `SWF_` are used for communication between the controller and running steps (e.g., `SWF_ROOT`, `SWF_CUR`, `SWF_NEXTSTEP_FILE`).
+Do not edit generated `NAMESPACE` or `man/*.Rd` by hand; regenerate them with
+`devtools::document()`.
 
 ## Ecosystem
 
-This package is a building block in the EpiModel ecosystem:
-- **EpiModel** — base package for mathematical modeling of infectious disease dynamics
-- **EpiModelHPC** — provides higher-level step templates (`step_tmpl_netsim_scenarios`, `step_tmpl_merge_netsim_scenarios_tibble`, `step_tmpl_renv_restore`, etc.) that wrap slurmworkflow's base templates
-- **EpiModelHIV-Template** — template repo for HIV research projects that uses slurmworkflow workflows extensively
-- **swfcalib** — automated calibration system built on slurmworkflow
+- **EpiModelHPC** provides higher-level templates wrapping these base templates.
+- **EpiModelHIV-Template** builds production research workflows with this API.
+- **swfcalib** uses static calibration loops and dynamic one-shot map overrides.

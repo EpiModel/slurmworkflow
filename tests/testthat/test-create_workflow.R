@@ -1,70 +1,72 @@
-test_that("`create_workflow` produces the right file structure", {
-  test_dir <- "workflows"
-  withr::local_file(test_dir)
-
-  wf_name <- "test_wf_struct"
-
+test_that("create_workflow writes the engine and resolved SWF files", {
+  directory <- withr::local_tempdir()
   wf <- create_workflow(
-    wf_name = wf_name,
+    wf_name = "my-workflow",
     default_sbatch_opts = list(
-      "partition" = "dummy_part",
-      "account" = "test_account"
+      partition = "compute",
+      account = "project",
+      mem = "8G",
+      time = 180
     ),
-    wf_common_dir = test_dir
+    wf_common_dir = directory
   )
+  root <- wf[["root"]]
 
-  wf_root <- get_workflow_root(wf)
-  expect_dir_exists(wf_root)
+  expect_true(dir.exists(root))
+  expect_true(file.exists(file.path(root, "swf")))
+  expect_identical(unname(file.access(file.path(root, "swf"), mode = 1L)), 0L)
+  expect_setequal(
+    list.files(file.path(root, "swf.d")),
+    c("lib.sh", "controller.sh", "job.sh", "workflow.swf",
+      "sbatch_rules.swf", "steps")
+  )
+  expect_false(file.exists(file.path(root, "workflow.yaml")))
+  expect_false(file.exists(file.path(root, "start_workflow.sh")))
 
-  wf_vars <- make_wf_vars(wf)
-  expect_dir_exists(wf_vars[["SWF_ROOT"]])
-  expect_dir_exists(wf_vars[["SWF__DIR"]])
+  workflow <- read_swf(file.path(root, "swf.d", "workflow.swf"))
+  expect_identical(workflow[["opt.partition"]], "compute")
+  expect_identical(workflow[["opt.time"]], "180")
+  expect_identical(workflow[["ctrl.opt.partition"]], "compute")
+  expect_identical(workflow[["ctrl.opt.account"]], "project")
 
-  start_wf_script <- fs::path(wf_vars[["SWF_ROOT"]], "start_workflow.sh")
-  expect_file_exists(start_wf_script)
-  expect_file_exists(wf_vars[["SWF_SUMMARY"]])
-  expect_file_exists(wf_vars[["SWF__CTRL_SCRIPT"]])
-  expect_file_exists(wf_vars[["SWF__STEP_SCRIPT"]])
+  rules <- read_swf(file.path(root, "swf.d", "sbatch_rules.swf"))
+  expect_identical(rules[["exclusive.mem"]], "mem mem-per-cpu mem-per-gpu")
+  expect_identical(rules[["reserved"]], "dependency job-name output parsable")
+  expect_true("partition" %in% strsplit(rules[["valid"]], " ", fixed = TRUE)[[1L]])
+  expect_identical(wf, load_workflow(root))
+  expect_named(wf, c("name", "root", "default_sbatch_opts", "steps"))
+  expect_length(wf[["steps"]], 0L)
 })
 
-test_that("`create_workflow` fails if a workflow with the same name already exists", {
-  test_dir <- "workflows"
-  withr::local_file(test_dir)
+test_that("create_workflow validates names, partitions, and reserved options", {
+  directory <- withr::local_tempdir()
+  expect_error(
+    create_workflow("one", list(account = "project"), directory),
+    "partition"
+  )
 
-  wf_name <- "test_wf_dupl"
-
-  create_workflow(
-    wf_name = wf_name,
-    default_sbatch_opts = list(
-      "partition" = "test_partition"
+  wf <- create_workflow("one", list(partition = "compute"), directory)
+  expect_error(
+    create_workflow("one", list(partition = "compute"), directory),
+    "already exists"
+  )
+  for (option in get_reserved_sbatch_opts()) {
+    expect_error(
+      create_workflow(
+        option,
+        setNames(list(partition = "compute", "anything"),
+                 c("partition", option)),
+        directory
+      ),
+      "managed"
+    )
+  }
+  expect_error(
+    add_workflow_step(
+      wf,
+      step_tmpl_bash_lines("true"),
+      sbatch_opts = list(`job-name` = "custom")
     ),
-    wf_common_dir = test_dir
-  )
-
-  expect_error(
-    create_workflow(
-      wf_name = wf_name,
-      default_sbatch_opts = list(
-        "partition" = "test_partition"
-      ),
-      wf_common_dir = test_dir
-    )
-  )
-})
-
-test_that("`create_workflow` fails if no `partition` is selected", {
-  test_dir <- "workflows"
-  withr::local_file(test_dir)
-
-  wf_name <- "test_wf_part"
-
-  expect_error(
-    create_workflow(
-      wf_name = wf_name,
-      default_sbatch_opts = list(
-        "account" = "test_account"
-      ),
-      wf_common_dir = test_dir
-    )
+    "managed"
   )
 })

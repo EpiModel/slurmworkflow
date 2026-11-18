@@ -2,7 +2,7 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_map}
 \alias{step_tmpl_map}
-\title{Step Template to Run an R Function With a Set of Arguments}
+\title{Step Template to Map an R Function Over Arguments}
 \usage{
 step_tmpl_map(
   FUN,
@@ -13,39 +13,32 @@ step_tmpl_map(
 )
 }
 \arguments{
-\item{FUN}{The R function to be run by the workflow step}
+\item{FUN}{The R function to be run by the workflow step.}
 
-\item{...}{arguments to vectorize over (vectors or lists of strictly
-positive length, or all of zero length).  See also ‘Details’.}
+\item{...}{Vectors or lists to iterate over. At least one iterator is
+required, all iterators must have the same non-zero length.}
 
-\item{MoreArgs}{a \code{list} of arguments to the function call. The \emph{names}
-attribute of \code{args} gives the argument names.}
+\item{MoreArgs}{A list of fixed arguments passed to every function call.}
 
-\item{setup_lines}{(optional) a vector of bash lines to be run first.
-This can be used to load the required modules (like R, python, etc).}
+\item{setup_lines}{Optional vector of bash lines to run first, typically to
+load the required modules.}
 
-\item{max_array_size}{maximum number of array jobs to be submitted at once.
-It should be strictly less than the maximum number of jobs you are allowed
-to submit to \code{slurm} on your HPC. If the number of jobs is greater than
-\code{max_array_size}, they will be submitted in multiple batches. The
-submission of the next batch is automatically handled by \code{slurmworkflow}.}
+\item{max_array_size}{Maximum number of array jobs submitted at once. If the
+map is larger, the first array task writes a continuation for the next
+slice.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
-This step template uses a syntax similar to the \code{base::Map} / \code{base::mapply}
-functions to run a function with a given set of arguments as a workflow step.
-You must make sure that all variables required by the function are passed to
-it either as one of its arguments or loaded later by the function itself.
+Run a function as a Slurm array using semantics similar to \code{base::Map()}.
+Large maps are split into sequential one-shot submissions. No environment is
+exported through sbatch; map offsets and totals are read from the resolved
+SWF submission.
 }
-\section{Step Template}{
+\section{Step Templates}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

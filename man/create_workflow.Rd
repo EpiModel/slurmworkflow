@@ -7,43 +7,34 @@
 create_workflow(wf_name, default_sbatch_opts, wf_common_dir = "workflows")
 }
 \arguments{
-\item{wf_name}{Name of the new workflow}
+\item{wf_name}{Name of the new workflow.}
 
 \item{default_sbatch_opts}{A named list of default sbatch options for the
-workflow. The "partition" options is mandatory.
-(see the SBATCH Options section for details).}
+workflow. The \code{partition} option is mandatory. Options \code{dependency},
+\code{job-name}, \code{output}, and \code{parsable} are managed by the engine and refused.}
 
-\item{wf_common_dir}{Path to the directory where to store the workflows
-(default = "workflows").}
+\item{wf_common_dir}{Path to the directory where workflows are stored.}
 }
 \value{
-The new workflow summary
+The new workflow summary, rebuilt from the generated files.
 }
 \description{
-Create a new workflow, set up it's directory and return its summary object
+Create a workflow directory containing the \code{swf} command, the bash engine,
+and the resolved SWF configuration files.
 }
 \section{SBATCH Options}{
 
-The \code{sbatch_opts} named list accepts all existing arguments to sbatch. It
-only works with the long form (e.g. "job-name" instead of "J"). The full list
-of arguments is available in the
-\href{https://slurm.schedmd.com/sbatch.html}{sbacth documentation}. Some arguments
-like "mem", "mem-per-cpu" and "mem-per-gpu" are mutually exclusive, providing
-multiple of them will result in an error. However, if one is set at the
-creation of the workflow in \code{default_sbatch_opts} (e.g. "mem") and another
-at the addition of a step in \code{sbatch_opts} (e.g. "mem-per-gpu"), the second
-one will be used.
+Use sbatch long option names (for example, \code{job-name}, not \code{J}). Options set
+on a step replace workflow defaults. Setting one option in an exclusive group,
+such as \code{mem-per-cpu}, removes the other options in that group from the
+resolved submission. Values are written verbatim to the \code{.swf} files.
 }
 
 \examples{
 \dontrun{
 wf <- create_workflow(
-  wf_name = "dummy-workflow",
-  default_sbatch_opts = list(
-    "partition" = "dummy_part",
-    "account" = "dummy_account"
-  ),
-  wf_common_dir = "workflows"
+  wf_name = "my-analysis",
+  default_sbatch_opts = list(partition = "compute", account = "project")
 )
 }
 
