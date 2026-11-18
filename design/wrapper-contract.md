@@ -137,12 +137,18 @@ export-file` `[planned: A9 for export]`.
   the engine. Make wrapper runtimes exit non-zero on any uncaught error.
   `[planned: A3]` kills and pre-flight errors also leave a marker.
   `[decision: E]` what the run does after a failure.
-- **Arrays**: `SLURM_ARRAY_TASK_ID` is the 0-based index within this
-  submission. A map item is `data.map.offset + SLURM_ARRAY_TASK_ID + 1`
-  (1-based), up to `data.map.total`. A task beyond `total` exits 0 and does
-  nothing. Wrappers implementing their own maps follow the same keys:
-  `map.n_items`, `map.max_array_size`, `map.offset`, `map.total`, all
-  integers.
+- **Arrays**: the engine never numbers items; it only passes
+  `SLURM_ARRAY_TASK_ID` (0-based within this submission) and the `data.*`
+  keys. The map convention is language-neutral and 0-based:
+  `pos = data.map.offset + SLURM_ARRAY_TASK_ID`, valid when
+  `0 <= pos < data.map.total`. `data.map.offset` is the number of items
+  already handled by earlier slices, not an index. Each runtime converts
+  `pos` to its own convention at the last moment: R uses `pos + 1`; Python
+  and bash use `pos`. A task with `pos >= total` exits 0 and does nothing.
+  Wrappers implementing their own maps use the same keys (`map.n_items`,
+  `map.max_array_size`, `map.offset`, `map.total`, all non-negative
+  integers) so that `set_map_size()` and `swf override` work the same way
+  for every language.
 - **Step numbers are positions, not identities.** Refer to steps by name;
   never compute targets with `SWF_CUR ± k`.
 - **Run-scoped state** (counters, flags, intermediate files that must not
