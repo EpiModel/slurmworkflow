@@ -244,17 +244,27 @@ The `swf` executable is the only command needed on the HPC:
 | `swf start` | Start a run; use `--force` to stop a live run first |
 | `swf stop` | Stop the current run and cancel its jobs |
 | `swf status` | Show the run, last submission, queue state, messages, and failures |
-| `swf log` | Show the controller log |
-| `swf log -s <step>` | Show logs for the last submission of a step |
+| `swf log` | Print the path of the controller log |
+| `swf log -s <step>` | Print the log paths of the last submission of a step |
 | `swf steps` | List step numbers, names, and static successors |
 | `swf runs` | List run identifiers |
 | `swf next <step>` | Set a one-shot runtime successor |
 | `swf override <step>` | Build a one-shot resolved submission override |
 | `swf check` | Validate the workflow files (also run by `swf start`) |
 
-`swf log` additionally accepts `-t` for an array task, `-r` for a run, `-n` for
-the tail length, `--path` for paths only, and `-f` to follow output. Use
-`swf help` or `swf <command> --help` for complete options.
+`swf log` prints paths only, one per line, to pass to other commands:
+
+```bash
+less "$(swf log -s fit -t 0)"         # one array task
+tail -f "$(swf log)"                  # follow the controller
+swf log -s fit --all | xargs tail     # every submission of the step
+```
+
+It also accepts `-t`/`--task` for an array task, `-e`/`--element` for a map
+element (1-based, found in whichever slice ran it when `max_array_size` split
+the map), `-b`/`--back` to go back `n` submissions (with `--element`, `n` map
+executions), `-a`/`--all` for every submission of the step, and `-r`/`--run`
+for another run. Use `swf help` or `swf <command> --help` for complete options.
 
 Run-specific state is under `swf.d/run/<run_id>/`; logs are under
 `log/<run_id>/`. A failing job or array task leaves a marker in the run's

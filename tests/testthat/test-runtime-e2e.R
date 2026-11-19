@@ -509,6 +509,17 @@ test_that("map slices run sequentially and a next message waits for the last", {
   expect_identical(continuations[[2L]][["data.map.offset"]], "6")
   expect_identical(continuations[[2L]][["opt.array"]], "0-0")
 
+  # `swf log --element` finds the slice that ran an item.
+  log_path <- function(sub, task) {
+    file.path(run$log_dir, paste0("1_mapped_", sub[["job"]], "_", task, ".out"))
+  }
+  swf <- file.path(wf$root, "swf")
+  for (case in list(list(2L, 1L, 1L), list(5L, 2L, 1L), list(7L, 3L, 0L))) {
+    log <- run_cmd(swf, c("log", "-s", "mapped", "-e", case[[1L]]))
+    expect_identical(log$status, 0L)
+    expect_identical(log$output, log_path(mapped[[case[[2L]]]], case[[3L]]))
+  }
+
   # The next message was claimed once, by the controller after the last slice.
   used <- list.files(file.path(run$dir, "used"))
   next_used <- grep("_next\\.swf$", used, value = TRUE)

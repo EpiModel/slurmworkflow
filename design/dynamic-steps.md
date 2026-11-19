@@ -140,11 +140,18 @@ User commands (login node):
   per state, "not in queue" when empty); pending messages under `msg/`;
   number of `failed/` markers with their job ids; last 5 history lines.
   `sacct` must not be required.
-- `swf log [-s <step>] [-t <task>] [-r <run_id>] [-n <lines>] [-f] [--path]`:
-  without `-s`, the controller log; with `-s`, the logs of the **last job of
-  that step** in the run (from history). `-t` picks an array task (default:
-  all of that job's files). `--path` prints paths only; `-f` runs `tail -f`;
-  default `tail -n 50` (`-n`). Default run: current.
+- `swf log [-s <step>] [-t <task> | -e <i>] [-b <n> | -a] [-r <run_id>]`
+  (long forms `--step --task --element --back --all --run`, also as
+  `--opt=value`): prints **paths only**, one per line, in submission then
+  numeric task order. Without `-s`, the controller log; with `-s`, the logs of
+  the **last submission of that step** in the run (from history `submit`
+  events). `-t` picks an array task (default: all of that job's files).
+  `-b n` selects the n-th submission before the last; `-a` every submission.
+  `-e i` selects map element `i` (1-based): walking back from the last
+  submission, the first slice whose `data.map.offset` (read from the `from=`
+  file) is `<= i - 1` gives job and task `i - 1 - offset`; a slice with offset
+  0 starts a map execution, and with `-e`, `-b n` counts executions. Errors:
+  usage 2, nothing found 1. Default run: current.
 - `swf steps`: one line per step: number, name, `next` (or `-`).
 - `swf runs`: list run ids, newest last, marking the current one.
 

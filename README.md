@@ -143,9 +143,10 @@ restores the bit.
 ./workflows/my_analysis/swf steps
 ./workflows/my_analysis/swf runs
 ./workflows/my_analysis/swf status
-./workflows/my_analysis/swf log
+# swf log prints log paths: pass them to less, tail, cat...
+tail -f "$(./workflows/my_analysis/swf log)"
 ./workflows/my_analysis/swf log -s simulate
-./workflows/my_analysis/swf log -s simulate -t 0 -n 100
+less "$(./workflows/my_analysis/swf log -s simulate -e 5)"
 
 # Stop the current run (controllers are cancelled before step jobs)
 ./workflows/my_analysis/swf stop

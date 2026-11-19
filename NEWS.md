@@ -28,6 +28,10 @@
   `swf.d/job.sh`, and a controller-driven run engine.
 - Added `swf start`, `stop`, `status`, `log`, `steps`, `runs`, `next`, and
   `override`. Run state and logs are now separated by run identifier.
+- `swf log` prints log paths, one per line, for `less "$(swf log ...)"` or
+  `| xargs`. It selects an array task (`-t`), a map element across
+  `max_array_size` slices (`-e`), earlier submissions (`-b`) or all of them
+  (`-a`); every option has a long form (`--step`, `--task`, ...).
 - Step directories are now `swf.d/steps/<N>_<name>/`. `add_workflow_step()` gained
   `step_name` semantics with generated `step_<N>` defaults and the new
   `next_step` argument for static branches, loops, and explicit endings.

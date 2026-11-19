@@ -40,7 +40,8 @@ User commands:
   start [-s <step>] [-d <dir>] [--force]  start a run
   stop                                    stop the current run
   status                                  show the current run
-  log [-s <step>] [-t <task>] [-r <run>] [-n <lines>] [-f] [--path]
+  log [-s <step>] [-t <task>|-e <i>] [-b <n>|-a] [-r <run>]
+                                          print log paths
   steps                                   list workflow steps
   runs                                    list runs, newest last
   check                                   validate the workflow files
@@ -63,7 +64,25 @@ function command_usage {
     start) printf 'usage: swf start [-s <name-or-number>] [-d <dir>] [--force]\n' ;;
     stop) printf 'usage: swf stop\n' ;;
     status) printf 'usage: swf status\n' ;;
-    log) printf 'usage: swf log [-s <step>] [-t <task>] [-r <run-id>] [-n <lines>] [-f] [--path]\n' ;;
+    log)
+      cat <<'EOF'
+usage: swf log [-s|--step <step>] [-t|--task <task> | -e|--element <i>]
+               [-b|--back <n> | -a|--all] [-r|--run <run-id>]
+
+Print log paths, one per line; nothing is read or followed. For example:
+  less "$(swf log -s fit -t 0)"    tail -f "$(swf log)"    swf log -s fit | xargs tail
+
+Without --step: the controller log of the run.
+  -s, --step     step name (or number): all task logs of its last submission
+  -t, --task     one array task of the selected submission(s)
+  -e, --element  map element i (1-based, as in R), in whichever slice ran it
+                 when max_array_size split the map
+  -b, --back     go back n submissions (0 = last, the default); with
+                 --element, n map executions
+  -a, --all      every submission of the step in the run
+  -r, --run      run id (default: the current run; see swf runs)
+EOF
+      ;;
     steps) printf 'usage: swf steps\n' ;;
     runs) printf 'usage: swf runs\n' ;;
     check) printf 'usage: swf check\n\nValidate the step directories and the .swf files; exit 1 on any problem.\n' ;;
@@ -646,72 +665,164 @@ function cmd_runs {
   done
 }
 
+# Print log paths, one per line, for `less "$(swf log ...)"` or `| xargs ...`.
 function cmd_log {
-  local step='' task='' run_id='' lines=50 follow=0 paths_only=0
+  local step='' task='' element='' back='' run_id='' all=0
   while (( $# > 0 )); do
     case "$1" in
-      -s) (( $# >= 2 )) || { swf_error '-s requires a step'; return 2; }; step="$2"; shift 2 ;;
-      -t) (( $# >= 2 )) || { swf_error '-t requires a task'; return 2; }; task="$2"; shift 2 ;;
-      -r) (( $# >= 2 )) || { swf_error '-r requires a run id'; return 2; }; run_id="$2"; shift 2 ;;
-      -n) (( $# >= 2 )) || { swf_error '-n requires a number'; return 2; }; lines="$2"; shift 2 ;;
-      -f) follow=1; shift ;;
-      --path) paths_only=1; shift ;;
+      --*=*) set -- "${1%%=*}" "${1#*=}" "${@:2}"; continue ;;
+    esac
+    case "$1" in
+      -s|--step|-t|--task|-e|--element|-b|--back|-r|--run)
+        (( $# >= 2 )) || { swf_error "$1 requires a value"; return 2; } ;;
+    esac
+    case "$1" in
+      -s|--step) step="$2"; shift 2 ;;
+      -t|--task) task="$2"; shift 2 ;;
+      -e|--element) element="$2"; shift 2 ;;
+      -b|--back) back="$2"; shift 2 ;;
+      -r|--run) run_id="$2"; shift 2 ;;
+      -a|--all) all=1; shift ;;
       -h|--help) command_usage log; return 0 ;;
       *) swf_error "unknown log argument: $1"; return 2 ;;
     esac
   done
-  [[ "$lines" =~ ^[0-9]+$ ]] || { swf_error 'line count must be a non-negative integer'; return 2; }
   [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { swf_error 'task must be a non-negative integer'; return 2; }
+  [[ -z "$element" || "$element" =~ ^[1-9][0-9]*$ ]] || { swf_error 'element must be a positive integer'; return 2; }
+  [[ -z "$back" || "$back" =~ ^[0-9]+$ ]] || { swf_error 'back must be a non-negative integer'; return 2; }
+  [[ -z "$task" || -z "$element" ]] || { swf_error '--task and --element are exclusive'; return 2; }
+  if (( all )) && [[ -n "$back$element" ]]; then
+    swf_error '--all excludes --back and --element'
+    return 2
+  fi
+  if [[ -z "$step" ]] && { [[ -n "$task$element$back" ]] || (( all )); }; then
+    swf_error '--task, --element, --back and --all require --step'
+    return 2
+  fi
+  back="${back:-0}"
+
   if [[ -z "$run_id" ]]; then
     swf_read "$SWF_ROOT/swf.d/run/current.swf" || return 1
     run_id="${SWF_VALUES[id]:-}"
   fi
   local run_dir="$SWF_ROOT/swf.d/run/$run_id"
-  [[ -d "$run_dir" ]] || { swf_error "run not found: $run_id"; return 1; }
+  local log_dir="$SWF_ROOT/log/$run_id"
+  [[ -n "$run_id" && -d "$run_dir" ]] || { swf_error "run not found: $run_id"; return 1; }
 
   if [[ -z "$step" ]]; then
-    [[ -z "$task" ]] || { swf_error '-t requires -s'; return 2; }
-    local controller_log="$SWF_ROOT/log/$run_id/controller.out"
-    [[ -f "$controller_log" ]] || { swf_error 'controller log not found'; return 1; }
-    if (( paths_only )); then printf '%s\n' "$controller_log"; return 0; fi
-    if (( follow )); then tail -f -n "$lines" -- "$controller_log"; else tail -n "$lines" -- "$controller_log"; fi
-    return
+    [[ -f "$log_dir/controller.out" ]] || { swf_error 'controller log not found'; return 1; }
+    printf '%s\n' "$log_dir/controller.out"
+    return 0
   fi
 
-  local step_id="$step"
   if ! swf_resolve_step "$SWF_ROOT" "$step" number; then
     swf_error "unknown step: $step"
     return 1
   fi
-  step_id="$STEP_ID"
-  local line field last_job=''
+  local step_id="$STEP_ID"
+
+  # Submissions of the step in history order: job ids and source files.
+  local line field is_submit this_step this_job this_from
+  local -a jobs=() froms=()
   while IFS= read -r line || [[ -n "$line" ]]; do
-    local matches=0 this_job=''
+    is_submit=0 this_step='' this_job='' this_from=''
     for field in $line; do
       case "$field" in
-        "step=$step_id") matches=1 ;;
+        event=submit) is_submit=1 ;;
+        step=*) this_step="${field#step=}" ;;
         job=*) this_job="${field#job=}" ;;
+        from=*) this_from="${field#from=}" ;;
       esac
     done
-    (( matches )) && [[ -n "$this_job" ]] && last_job="$this_job"
+    if (( is_submit )) && [[ "$this_step" == "$step_id" && -n "$this_job" ]]; then
+      jobs+=("$this_job")
+      froms+=("$this_from")
+    fi
   done < "$run_dir/history"
-  [[ -n "$last_job" ]] || { swf_error "step has no submission in run $run_id: $step_id"; return 1; }
+  local count="${#jobs[@]}"
+  (( count > 0 )) || { swf_error "step has no submission in run $run_id: $step_id"; return 1; }
 
   local file
-  local -a log_files=()
-  if [[ -n "$task" ]]; then
-    file="$SWF_ROOT/log/$run_id/${step_id}_${last_job}_${task}.out"
-    [[ -f "$file" ]] || { swf_error "log not found: $file"; return 1; }
-    log_files+=("$file")
-  else
-    for file in "$SWF_ROOT/log/$run_id/${step_id}_${last_job}_"*.out; do
-      [[ -f "$file" ]] || continue
-      log_files+=("$file")
+  if [[ -n "$element" ]]; then
+    # Walk back through the map slices. A slice with offset 0 starts a map
+    # execution; --back counts executions.
+    local pos=$((element - 1)) i offset='' total='' source execution=0 found=''
+    for (( i = count - 1; i >= 0; i-- )); do
+      source="${froms[i]}"
+      [[ "$source" == /* ]] || source="$SWF_ROOT/swf.d/$source"
+      swf_read "$source" || return 1
+      if [[ ! "${SWF_VALUES[data.map.offset]:-}" =~ ^[0-9]+$ ]]; then
+        swf_error "submission ${jobs[i]} of $step_id is not a map slice (use --task)"
+        return 1
+      fi
+      offset="${SWF_VALUES[data.map.offset]}"
+      if (( execution == back && offset <= pos )); then
+        found="$i"
+        total="${SWF_VALUES[data.map.total]:-}"
+        break
+      fi
+      if (( offset == 0 )); then
+        execution=$((execution + 1))
+        (( execution <= back )) || break
+      fi
     done
+    if [[ -z "$found" ]]; then
+      if (( execution <= back )); then
+        swf_error "$step_id has $execution map execution(s) in run $run_id; --back $back is too far"
+      else
+        swf_error "element $element of $step_id was not submitted in that map execution"
+      fi
+      return 1
+    fi
+    if [[ "$total" =~ ^[0-9]+$ ]] && (( pos >= total )); then
+      swf_error "element $element is beyond the $total items of the map"
+      return 1
+    fi
+    file="$log_dir/${step_id}_${jobs[found]}_$((pos - offset)).out"
+    [[ -f "$file" ]] || { swf_error "log not found: $file"; return 1; }
+    printf '%s\n' "$file"
+    return 0
   fi
-  (( ${#log_files[@]} > 0 )) || { swf_error 'no step logs found'; return 1; }
-  if (( paths_only )); then printf '%s\n' "${log_files[@]}"; return 0; fi
-  if (( follow )); then tail -f -n "$lines" -- "${log_files[@]}"; else tail -n "$lines" -- "${log_files[@]}"; fi
+
+  local first=$((count - 1 - back)) last=$((count - 1)) name task_id printed=0
+  (( all )) && first=0
+  if (( first < 0 )); then
+    swf_error "$step_id has $count submission(s) in run $run_id; --back $back is too far"
+    return 1
+  fi
+  (( all )) || last="$first"
+  local -a by_task=()
+  for (( i = first; i <= last; i++ )); do
+    if [[ -n "$task" ]]; then
+      file="$log_dir/${step_id}_${jobs[i]}_${task}.out"
+      if [[ -f "$file" ]]; then
+        printf '%s\n' "$file"
+        printed=$((printed + 1))
+      fi
+      continue
+    fi
+    # A sparse indexed array lists the tasks in numeric order.
+    by_task=()
+    for file in "$log_dir/${step_id}_${jobs[i]}_"*.out; do
+      [[ -f "$file" ]] || continue
+      name="${file##*_}"
+      task_id="${name%.out}"
+      [[ "$task_id" =~ ^[0-9]+$ ]] || continue
+      by_task[10#$task_id]="$file"
+    done
+    if (( ${#by_task[@]} > 0 )); then
+      printf '%s\n' "${by_task[@]}"
+      printed=$((printed + ${#by_task[@]}))
+    fi
+  done
+  if (( printed == 0 )); then
+    if [[ -n "$task" ]]; then
+      swf_error "no log for task $task of $step_id"
+    else
+      swf_error "no log for $step_id"
+    fi
+    return 1
+  fi
 }
 
 function swf_merge_load {

@@ -653,20 +653,84 @@ EOF
   run_scheduler
   last_job_for_step 1_loop
   LAST_ARRAY_JOB="$STEP_JOB"
-  PATHS="$(must_capture "$WF/swf" log -s loop --path)"
+  PATHS="$(must_capture "$WF/swf" log -s loop)"
   assert_eq 3 "$(printf '%s\n' "$PATHS" | grep -c .)" 'three array logs for last job'
   assert_contains "$PATHS" "1_loop_${LAST_ARRAY_JOB}_0.out"
   assert_contains "$PATHS" "1_loop_${LAST_ARRAY_JOB}_1.out"
   assert_contains "$PATHS" "1_loop_${LAST_ARRAY_JOB}_2.out"
   FIRST_ARRAY_JOB="$(grep ' event=submit step=1_loop ' "$WF/swf.d/run/$RUN_ID/history" | head -n 1 | sed 's/.* job=\([0-9]*\).*/\1/')"
   assert_not_contains "$PATHS" "1_loop_${FIRST_ARRAY_JOB}_" 'log selects last submission'
-  TASK_PATH="$(must_capture "$WF/swf" log -s loop -t 1 --path)"
+  TASK_PATH="$(must_capture "$WF/swf" log -s loop -t 1)"
   assert_contains "$TASK_PATH" "1_loop_${LAST_ARRAY_JOB}_1.out"
   assert_eq 1 "$(printf '%s\n' "$TASK_PATH" | grep -c .)" 'one task log selected'
-  LOG_TEXT="$(must_capture "$WF/swf" log -s loop -t 1 -n 20)"
-  assert_contains "$LOG_TEXT" 'task=1'
-  CONTROLLER_PATH="$(must_capture "$WF/swf" log --path)"
-  assert_contains "$CONTROLLER_PATH" "/log/$RUN_ID/controller.out"
+  assert_contains "$(cat "$TASK_PATH")" 'task=1'
+  CONTROLLER_PATH="$(must_capture "$WF/swf" log)"
+  assert_eq "$WF/log/$RUN_ID/controller.out" "$CONTROLLER_PATH" 'controller log path'
+}
+
+# A map of 7 elements in slices of 3 (offsets 0, 3, 6) runs twice; `wide` has
+# 12 tasks to check the numeric order of the paths.
+function test_log_selection {
+  case_init log-selection
+  new_workflow wf
+  write_step 1 map opt.array=0-2 data.map.offset=0 data.map.total=7 next=gate
+  write_payload 1 map <<'EOF'
+OFFSET="$(sed -n 's/^data\.map\.offset=//p' "$SWF_SUBMISSION")"
+printf 'pos=%s\n' $((OFFSET + SLURM_ARRAY_TASK_ID))
+if [[ "$SLURM_ARRAY_TASK_ID" == 0 ]] && (( OFFSET + 3 < 7 )); then
+  NEXT=$((OFFSET + 3)); SIZE=$(( 7 - NEXT < 3 ? 7 - NEXT : 3 ))
+  "$SWF_CMD" override map --repeat --opt "array=0-$((SIZE - 1))" \
+    --data "map.offset=$NEXT" --data map.total=7 > /dev/null
+fi
+EOF
+  write_step 2 gate next=wide
+  write_payload 2 gate <<'EOF'
+if [[ ! -f "$SWF_ROOT/gate" ]]; then touch "$SWF_ROOT/gate"; "$SWF_CMD" next map; fi
+EOF
+  write_step 3 wide opt.array=0-11 next=
+  start_workflow
+  run_scheduler
+  assert_grep 'event=end' "$WF/swf.d/run/$RUN_ID/history"
+  local -a MAP_JOBS=()
+  mapfile -t MAP_JOBS < <(grep ' event=submit step=1_map ' "$WF/swf.d/run/$RUN_ID/history" | sed 's/.* job=\([0-9]*\).*/\1/')
+  assert_eq 6 "${#MAP_JOBS[@]}" 'two map executions of three slices'
+  local LOGS="$WF/log/$RUN_ID"
+
+  # --element finds the slice of the last execution; --back counts executions.
+  assert_eq "$LOGS/1_map_${MAP_JOBS[4]}_1.out" "$(must_capture "$WF/swf" log -s map -e 5)" 'element 5'
+  assert_eq 'pos=4' "$(cat "$("$WF/swf" log -s map -e 5)")" 'element 5 log content'
+  assert_eq "$LOGS/1_map_${MAP_JOBS[5]}_0.out" "$(must_capture "$WF/swf" log --step map --element 7)" 'element 7'
+  assert_eq "$LOGS/1_map_${MAP_JOBS[3]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 0)" 'element 3'
+  assert_eq "$LOGS/1_map_${MAP_JOBS[0]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 1)" 'element 3, previous execution'
+  assert_eq "$LOGS/1_map_${MAP_JOBS[1]}_1.out" "$(must_capture "$WF/swf" log -s map -e 5 --back 1)" 'element 5, previous execution'
+  if "$WF/swf" log -s map -e 5 -b 2 > /dev/null 2> "$CASE/err"; then fail 'accepted --back beyond the executions'; fi
+  assert_grep 'too far' "$CASE/err"
+  if "$WF/swf" log -s map -e 8 > /dev/null 2> "$CASE/err"; then fail 'accepted an element beyond the map'; fi
+  assert_grep 'beyond the 7 items' "$CASE/err"
+  if "$WF/swf" log -s gate -e 1 > /dev/null 2> "$CASE/err"; then fail 'accepted --element on a non-map step'; fi
+  assert_grep 'not a map slice' "$CASE/err"
+
+  # Submissions: the last by default, --back n before it, --all for every one.
+  assert_eq "$LOGS/1_map_${MAP_JOBS[5]}_0.out" "$(must_capture "$WF/swf" log -s map)" 'last slice'
+  assert_eq "$(printf '%s\n' "$LOGS/1_map_${MAP_JOBS[4]}_"{0,1,2}.out)" \
+    "$(must_capture "$WF/swf" log -s map -b 1)" 'previous slice'
+  assert_eq "$LOGS/1_map_${MAP_JOBS[3]}_2.out" "$(must_capture "$WF/swf" log --step=map --back=2 --task=2)" 'long options with ='
+  assert_eq 14 "$(must_capture "$WF/swf" log -s map --all | grep -c .)" 'every map log'
+  assert_eq 6 "$(must_capture "$WF/swf" log -s map -a -t 0 | grep -c .)" 'task 0 of every submission'
+  if "$WF/swf" log -s map -b 6 > /dev/null 2> "$CASE/err"; then fail 'accepted --back beyond the submissions'; fi
+  assert_grep 'has 6 submission(s)' "$CASE/err"
+
+  # Paths are in numeric task order.
+  last_job_for_step 3_wide
+  assert_eq "$(printf "$LOGS/3_wide_${STEP_JOB}_%s.out\n" {0..11})" "$(must_capture "$WF/swf" log -s wide)" 'numeric task order'
+
+  # Argument errors exit 2.
+  local args
+  for args in '-t 0' '-s map -t 0 -e 1' '-s map -a -b 1' '-s map -e 0' '-s map -b x' '-s' '--path'; do
+    # shellcheck disable=SC2086
+    "$WF/swf" log $args > /dev/null 2>&1 && fail "accepted: swf log $args"
+    assert_eq 2 "$?" "exit status of: swf log $args"
+  done
 }
 
 function test_repeat_precedence {
@@ -1234,6 +1298,7 @@ run_test 'failed step stops the run; messages stay pending; status error line' t
 run_test 'on_failure=continue (step.swf and override) keeps going' test_on_failure_continue
 run_test 'live start refusal, stop, cancellation, and --force' test_stop_and_force
 run_test 'log -s/-t selects last job; pending messages in status' test_log_status
+run_test 'log --element/--back/--all across map slices and submissions' test_log_selection
 run_test 'repeat takes precedence over pending next' test_repeat_precedence
 run_test 'cyclic skip stops at loop bound' test_skip_loop_bound
 run_test 'first-step override and numeric/name selectors' test_first_step_override_and_selectors
