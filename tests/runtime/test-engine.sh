@@ -783,7 +783,9 @@ function test_first_step_override_and_selectors {
   write_step 1 one
   write_step 2 chosen 'opt.comment=default'
   write_step 3 three
-  start_workflow -s 2
+  RUN_ID="$("$WF/swf" start -s 2 2> "$CASE/start.err")" || fail 'swf start -s 2 failed'
+  assert_grep 'swf: starting at step chosen (2), controller job ' "$CASE/start.err"
+  [[ "$RUN_ID" =~ ^[0-9]{8}-[0-9]{6}-[0-9]+$ ]] || fail "stdout is not only the run id: $RUN_ID"
   must "$WF/swf" override chosen --opt comment=first-choice --data selected=yes > /dev/null
   run_scheduler
   first_submit_step

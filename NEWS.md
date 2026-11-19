@@ -32,6 +32,8 @@
   `| xargs`. It selects an array task (`-t`), a map element across
   `max_array_size` slices (`-e`), earlier submissions (`-b`) or all of them
   (`-a`); every option has a long form (`--step`, `--task`, ...).
+- `swf start` reports the step it starts at (name and number) on stderr; stdout
+  is still only the run id.
 - Step directories are now `swf.d/steps/<N>_<name>/`. `add_workflow_step()` gained
   `step_name` semantics with generated `step_<N>` defaults and the new
   `next_step` argument for static branches, loops, and explicit endings.

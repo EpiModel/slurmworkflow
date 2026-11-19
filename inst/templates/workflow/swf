@@ -344,6 +344,9 @@ function cmd_start {
   } > "$tmp"
   mv "$tmp" "$current"
   swf_history "$run_dir" start "first=$first_id" "ctrl=$ctrl_id"
+  # On stderr, so that `$(swf start)` still captures only the run id.
+  printf 'swf: starting at step %s (%s), controller job %s\n' \
+    "$first_name" "${first_id%%_*}" "$ctrl_id" >&2
   printf '%s\n' "$run_id"
 }
 

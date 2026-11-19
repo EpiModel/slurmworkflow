@@ -227,7 +227,9 @@ Every `swf start` begins a new run, with a fresh run directory
 (`swf.d/run/<run_id>/`) and log directory (`log/<run_id>/`). Starting again at a
 later step with `-s` is a new run too, not a resumption. `swf start` first runs
 `swf check`, which validates the step layout and every `.swf` file, and refuses
-to start a broken workflow.
+to start a broken workflow. It reports the step it starts at, such as
+`swf: starting at step fit (2), controller job 123456`, on stderr, and prints
+only the run id on stdout.
 
 The working directory at `swf start` is inherited by jobs. Select another
 starting step by name or number with `-s`, or set the working directory with
