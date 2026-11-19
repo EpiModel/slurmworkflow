@@ -137,7 +137,7 @@ restores the bit.
 
 # Start by name or number, optionally choosing the submission working directory
 ./workflows/my_analysis/swf start -s simulate
-./workflows/my_analysis/swf start -s 1 -d ~/projects/my_project
+./workflows/my_analysis/swf start -s prepare -d ~/projects/my_project
 
 # Inspect definitions, runs, current status, and logs
 ./workflows/my_analysis/swf steps

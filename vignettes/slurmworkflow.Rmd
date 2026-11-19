@@ -230,7 +230,7 @@ later step with `-s` is a new run too, not a resumption. `swf start` first runs
 to start a broken workflow.
 
 The working directory at `swf start` is inherited by jobs. Select another
-starting step by name or number with `-s`, or set the working directory with
+starting step by name (not number) with `-s`, or set the working directory with
 `-d`:
 
 ```{bash start-options, eval = FALSE}

@@ -52,7 +52,8 @@ Message commands (the run comes from SWF_RUN_ID, then run/current.swf):
            [--skip] [--repeat] [--on-failure stop|continue]
            [--from <file>] [--reset]
 
-Steps are referred to by name; a number is accepted and resolved to the name
+Steps are referred to by name. Except for start -s, which takes names only,
+a number is accepted and resolved to the name
 of the step at that position (prefer names).
 
 Use "swf <command> --help" for command-specific syntax.
@@ -61,7 +62,7 @@ EOF
 
 function command_usage {
   case "$1" in
-    start) printf 'usage: swf start [-s <name-or-number>] [-d <dir>] [--force]\n' ;;
+    start) printf 'usage: swf start [-s <step-name>] [-d <dir>] [--force]\n\nWithout -s, the run starts at the first step. -s takes a name, not a number.\n' ;;
     stop) printf 'usage: swf stop\n' ;;
     status) printf 'usage: swf status\n' ;;
     log)
@@ -238,7 +239,7 @@ function run_is_live {
 }
 
 function cmd_start {
-  local first_reference=1
+  local first_reference=''
   local start_dir=''
   local force=0
   while (( $# > 0 )); do
@@ -274,8 +275,19 @@ function cmd_start {
     swf_error 'not starting: fix the problems above (see swf check)'
     return 1
   fi
-  if ! swf_resolve_step "$SWF_ROOT" "$first_reference" number; then
-    swf_error "unknown first step: $first_reference"
+  # -s takes a name only: a position is easy to get wrong once steps move.
+  if [[ "$first_reference" =~ ^[0-9]+$ ]]; then
+    if swf_resolve_step "$SWF_ROOT" "$first_reference" number; then
+      swf_error "swf start -s takes a step name; step $first_reference is $STEP_NAME: swf start -s $STEP_NAME"
+    else
+      swf_error "swf start -s takes a step name, not a number: $first_reference (see swf steps)"
+    fi
+    return 2
+  fi
+  if [[ -z "$first_reference" ]]; then
+    swf_resolve_step "$SWF_ROOT" 1 number || { swf_error 'step 1 not found'; return 1; }
+  elif ! swf_resolve_step "$SWF_ROOT" "$first_reference"; then
+    swf_error "unknown first step: $first_reference (see swf steps)"
     return 1
   fi
   local first_id="$STEP_ID"

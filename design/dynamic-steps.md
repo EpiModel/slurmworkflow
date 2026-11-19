@@ -120,7 +120,8 @@ error goes to stderr with a non-zero exit.
 User commands (login node):
 
 - `swf start [-s <step>] [-d <dir>] [--force]`
-  - `-s`: first step, name or number (default: step 1). `-d`: `cd` there
+  - `-s`: first step, by **name only** (default: step 1); a number exits 2
+    and names the step to use. `-d`: `cd` there
     first; jobs run from the directory `swf start` runs in (as today:
     sbatch inherits it).
   - Refuse if `run/current.swf` exists, has no `stopped=`, and any job id
