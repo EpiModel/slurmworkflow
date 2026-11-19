@@ -1,5 +1,13 @@
 ## slurmworkflow 0.2.0
 
+### Platforms
+
+- The engine needs bash 4.2 or later at `/bin/bash`. Older bash (the 3.2 of
+  stock macOS) is refused with `swf: bash >= 4.2 is required`. Building a
+  workflow in R works on any platform.
+- `swf start` restores the executable bit of `swf` when it was lost (workflow
+  built on Windows or copied without permissions); use `bash swf start` then.
+
 ### A failed step stops the workflow
 
 - **A failed step stops the workflow unless `on_failure = "continue"`.** When

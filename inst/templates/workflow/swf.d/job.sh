@@ -2,6 +2,12 @@
 #SBATCH --export=NONE
 #SBATCH --open-mode=append
 
+# Refuse old bash first, with syntax that bash 3.2 (stock macOS) can parse.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) )); then
+  printf 'swf: bash >= 4.2 is required (found %s)\n' "${BASH_VERSION%%[!0-9.]*}" >&2
+  exit 2
+fi
+
 # Every non-zero exit of this script goes through swf_fail, which writes the
 # failed/<id> marker read by the next controller: payload errors, signals
 # (time limit, scancel) and pre-flight errors alike.

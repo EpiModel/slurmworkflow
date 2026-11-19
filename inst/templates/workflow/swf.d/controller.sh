@@ -6,6 +6,12 @@
 #SBATCH --mem-per-cpu=500
 #SBATCH --export=NONE
 
+# Refuse old bash first, with syntax that bash 3.2 (stock macOS) can parse.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) )); then
+  printf 'swf: bash >= 4.2 is required (found %s)\n' "${BASH_VERSION%%[!0-9.]*}" >&2
+  exit 2
+fi
+
 set -e
 
 function controller_usage {

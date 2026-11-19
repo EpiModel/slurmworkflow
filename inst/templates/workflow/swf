@@ -1,4 +1,9 @@
 #!/bin/bash
+# Refuse old bash first, with syntax that bash 3.2 (stock macOS) can parse.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) )); then
+  printf 'swf: bash >= 4.2 is required (found %s)\n' "${BASH_VERSION%%[!0-9.]*}" >&2
+  exit 2
+fi
 # The only user and payload entry point for a slurmworkflow workflow.
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -230,6 +235,9 @@ function cmd_start {
   if [[ -n "$start_dir" ]]; then
     cd "$start_dir" || exit 1
   fi
+  # A workflow built on Windows or copied without permissions has a `swf`
+  # that is not executable (`bash swf start` still works): restore the bit.
+  [[ -x "$SWF_ROOT/swf" ]] || chmod +x "$SWF_ROOT/swf" 2>/dev/null || true
   mkdir -p "$SWF_ROOT/swf.d/run"
   if ! mkdir "$SWF_ROOT/swf.d/run/.start.lock" 2>/dev/null; then
     swf_error "another swf start is running (remove $SWF_ROOT/swf.d/run/.start.lock if it is not)"

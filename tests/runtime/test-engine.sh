@@ -1141,6 +1141,42 @@ function test_stop_reports_scancel_failure {
   assert_eq 0 "$(grep -c ' event=submit ' "$WF/swf.d/run/$RUN_ID/history")" 'nothing submitted after stop'
 }
 
+function test_start_restores_executable_bit {
+  case_init exec-bit
+  new_workflow wf
+  write_step 1 one
+  chmod -x "$WF/swf"
+  [[ ! -x "$WF/swf" ]] || fail 'could not remove the executable bit'
+  RUN_ID="$(bash "$WF/swf" start 2> "$CASE/start.err")" || fail 'bash swf start failed without the executable bit'
+  [[ -x "$WF/swf" ]] || fail 'swf start did not restore the executable bit'
+  must "$WF/swf" stop
+}
+
+function test_old_bash_is_refused_clearly {
+  case_init old-bash
+  new_workflow wf
+  write_step 1 one
+  # BASH_VERSINFO is read-only: force the guard's condition instead.
+  local script
+  for script in swf swf.d/job.sh swf.d/controller.sh swf.d/lib.sh; do
+    sed 's/^if (( BASH_VERSINFO\[0\] < 4 ||/if (( 1 ||/' "$WF/$script" > "$CASE/old-guard.sh"
+    assert_grep 'if (( 1 ||' "$CASE/old-guard.sh"
+    if bash "$CASE/old-guard.sh" check > "$CASE/old.out" 2> "$CASE/old.err"; then
+      fail "$script ran on an old bash"
+    else
+      assert_eq 2 "$?" "$script exit status"
+    fi
+    assert_grep 'swf: bash >= 4.2 is required (found ' "$CASE/old.err"
+    assert_eq 0 "$(wc -c < "$CASE/old.out")" "$script wrote nothing to stdout"
+  done
+  # The guard is the first command of every script, after the #SBATCH block.
+  local first
+  for script in swf.d/job.sh swf.d/controller.sh; do
+    first="$(grep -v -e '^#' -e '^$' "$WF/$script" | head -n 1)"
+    assert_contains "$first" 'BASH_VERSINFO'
+  done
+}
+
 function test_first_controller_waits_for_start {
   case_init first-controller-window
   new_workflow wf
@@ -1207,6 +1243,8 @@ run_test 'CRLF fix leaves user files alone' test_crlf_scope
 run_test 'swf stop reports scancel failures' test_stop_reports_scancel_failure
 run_test 'purged job ids count as not queued' test_squeue_purged_ids
 run_test 'first controller waits for swf start to write current.swf' test_first_controller_waits_for_start
+run_test 'swf start restores its executable bit' test_start_restores_executable_bit
+run_test 'bash older than 4.2 is refused with a clear message' test_old_bash_is_refused_clearly
 
 printf '\nTest summary\n'
 printf '  Total:  %s\n  Passed: %s\n  Failed: %s\n' "$TOTAL" "$PASSED" "$FAILED"

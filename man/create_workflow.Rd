@@ -23,6 +23,14 @@ The new workflow summary, rebuilt from the generated files.
 Create a workflow directory containing the \code{swf} command, the bash engine,
 and the resolved SWF configuration files.
 }
+\details{
+Building a workflow is pure R and works on any platform. Running it needs
+bash 4.2 or later at \verb{/bin/bash}, as found on Linux clusters: older bash
+(such as the 3.2 of stock macOS) is refused with a clear message. If \code{swf}
+is not executable after copying the workflow (built on Windows, or copied
+without permissions), start it with \verb{bash swf start}: \verb{swf start} restores
+the executable bit.
+}
 \section{SBATCH Options}{
 
 Use sbatch long option names (for example, \code{job-name}, not \code{J}). Options set

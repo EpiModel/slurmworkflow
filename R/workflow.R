@@ -10,6 +10,14 @@
 #'   by the engine and refused.
 #' @param wf_common_dir Path to the directory where workflows are stored.
 #'
+#' @details
+#' Building a workflow is pure R and works on any platform. Running it needs
+#' bash 4.2 or later at `/bin/bash`, as found on Linux clusters: older bash
+#' (such as the 3.2 of stock macOS) is refused with a clear message. If `swf`
+#' is not executable after copying the workflow (built on Windows, or copied
+#' without permissions), start it with `bash swf start`: `swf start` restores
+#' the executable bit.
+#'
 #' @return The new workflow summary, rebuilt from the generated files.
 #'
 #' @section SBATCH Options:

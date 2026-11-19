@@ -213,7 +213,11 @@ strings, and duplicate option names are refused with the option's name.
 
 ## Start, inspect, and stop a run
 
-Copy the full workflow directory to the cluster. From the project root:
+Copy the full workflow directory to the cluster. The engine needs bash 4.2 or
+later at `/bin/bash` (any Linux cluster). If `swf` is not executable (workflow
+built on Windows, or copied without permissions), run
+`bash ./workflows/analysis/swf start` once: it restores the executable bit.
+From the project root:
 
 ```{bash start, eval = FALSE}
 ./workflows/analysis/swf start

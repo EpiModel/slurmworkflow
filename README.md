@@ -3,7 +3,6 @@
 <!-- badges: start -->
 [![Lifecycle: stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)](https://lifecycle.r-lib.org/articles/stages.html#stable)
 [![R-CMD-check](https://github.com/EpiModel/slurmworkflow/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/EpiModel/slurmworkflow/actions/workflows/R-CMD-check.yaml)
-[![codecov](https://codecov.io/gh/EpiModel/slurmworkflow/branch/main/graph/badge.svg)](https://codecov.io/gh/EpiModel/slurmworkflow)
 <!-- badges: end -->
 
 **slurmworkflow** builds multi-step workflows for
@@ -126,7 +125,11 @@ list containing named `sbatch_opts` and `data` lists. A data element named
 ## Run and inspect on the HPC
 
 Copy the complete workflow directory to the project on the cluster, then use its
-single executable entry point:
+single executable entry point. The engine needs bash 4.2 or later at `/bin/bash`
+(any Linux cluster; stock macOS has 3.2 and is refused with a clear message).
+If `swf` lost its executable bit (workflow built on Windows, or copied without
+permissions), run `bash ./workflows/my_analysis/swf start` once: `swf start`
+restores the bit.
 
 ```bash
 # Start at step 1, from the current project directory
