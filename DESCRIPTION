@@ -20,7 +20,6 @@ Imports:
     fs
 Suggests:
     codetools,
-    covr,
     knitr,
     rlang,
     rmarkdown,

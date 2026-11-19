@@ -47,3 +47,29 @@ jobs:
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
+
+  # The bash engine suite, without R, on the runner's bash and with
+  # BASH_COMPAT=4.2.
+  engine:
+    runs-on: ubuntu-latest
+    name: engine (bash suite)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Engine suite
+        run: bash tests/runtime/test-engine.sh
+      - name: Engine suite, BASH_COMPAT=4.2
+        run: BASH_COMPAT=4.2 bash tests/runtime/test-engine.sh
+
+  # The same suite on a real bash 4.2. GNU tools are installed so that the
+  # image matches a cluster, not busybox.
+  engine-bash42:
+    runs-on: ubuntu-latest
+    name: engine (real bash 4.2)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Engine suite on bash 4.2
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work bash:4.2 bash -c '
+            apk add --no-cache coreutils procps findutils grep sed gawk util-linux >/dev/null &&
+            bash --version | head -n 1 &&
+            bash tests/runtime/test-engine.sh'
