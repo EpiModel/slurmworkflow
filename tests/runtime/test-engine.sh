@@ -783,18 +783,11 @@ function test_first_step_override_and_selectors {
   write_step 1 one
   write_step 2 chosen 'opt.comment=default'
   write_step 3 three
-  # A number is refused (exit 2) with the step name to use instead.
-  "$WF/swf" start -s 2 > /dev/null 2> "$CASE/err" && fail 'start accepted a step number'
-  assert_eq 2 "$?" 'start -s <number> exit status'
-  assert_grep 'step 2 is chosen: swf start -s chosen' "$CASE/err"
-  "$WF/swf" start -s 9 > /dev/null 2> "$CASE/err" && fail 'start accepted an unknown number'
-  assert_grep 'takes a step name, not a number: 9' "$CASE/err"
-  assert_no_file "$WF/swf.d/run/current.swf"
-  start_workflow -s chosen
+  start_workflow -s 2
   must "$WF/swf" override chosen --opt comment=first-choice --data selected=yes > /dev/null
   run_scheduler
   first_submit_step
-  assert_eq 2_chosen "$FIRST_SUBMIT" 'name -s selected step 2'
+  assert_eq 2_chosen "$FIRST_SUBMIT" 'numeric -s selected step 2'
   CLAIMED="$(find "$WF/swf.d/run/$RUN_ID/used" -name '*_override_chosen.swf' -print -quit)"
   assert_grep 'opt.comment=first-choice' "$CLAIMED"
   assert_grep 'data.selected=yes' "$CLAIMED"
