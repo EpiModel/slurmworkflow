@@ -69,5 +69,6 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work bash:4.2 bash -c '
             apk add --no-cache coreutils procps findutils grep sed gawk util-linux >/dev/null &&
+            ln -sf "$(command -v bash)" /bin/bash &&
             bash --version | head -n 1 &&
             bash tests/runtime/test-engine.sh'

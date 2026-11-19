@@ -1099,11 +1099,20 @@ function test_start_lock {
   [[ ! -e "$WF/swf.d/run/.start.lock" ]] || fail 'start lock left behind'
   # Two concurrent starts: exactly one wins.
   must "$WF/swf" stop
+  local status_a=0 status_b=0
   "$WF/swf" start > "$CASE/a.out" 2> "$CASE/a.err" &
+  local pid_a=$!
   "$WF/swf" start > "$CASE/b.out" 2> "$CASE/b.err" &
-  wait
-  WINNERS="$(cat "$CASE/a.out" "$CASE/b.out" | grep -c .)"
-  assert_eq 1 "$WINNERS" 'one concurrent start wins'
+  local pid_b=$!
+  wait "$pid_a" || status_a=$?
+  wait "$pid_b" || status_b=$?
+  WINNERS="$(cat "$CASE/a.out" "$CASE/b.out" | grep -c . || true)"
+  if [[ "$WINNERS" != 1 || "$status_a$status_b" != @(01|10) ]]; then
+    printf '    start a: status=%s out=<%s> err=<%s>\n' "$status_a" "$(< "$CASE/a.out")" "$(< "$CASE/a.err")" >&2
+    printf '    start b: status=%s out=<%s> err=<%s>\n' "$status_b" "$(< "$CASE/b.out")" "$(< "$CASE/b.err")" >&2
+    printf '    runs: %s\n' "$(ls "$WF/swf.d/run" | tr '\n' ' ')" >&2
+    fail "concurrent starts: expected one winner, got $WINNERS (statuses $status_a $status_b)"
+  fi
 }
 
 function test_crlf_scope {
@@ -1195,8 +1204,12 @@ function test_first_controller_waits_for_start {
   assert_grep 'event=submit step=1_one' "$RUN_DIR/history"
 }
 
+# TEST_ONLY=<regex> runs only the tests whose name matches (for debugging).
 function run_test {
   local name="$1" function_name="$2"
+  if [[ -n "${TEST_ONLY:-}" && ! "$name" =~ $TEST_ONLY ]]; then
+    return 0
+  fi
   TOTAL=$((TOTAL + 1))
   printf '[ RUN      ] %s\n' "$name"
   if ( "$function_name" ); then
