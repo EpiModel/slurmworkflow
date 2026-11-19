@@ -120,7 +120,7 @@ error goes to stderr with a non-zero exit.
 User commands (login node):
 
 - `swf start [-s <step>] [-d <dir>] [--force]`
-  - Output: `swf: starting at step <name> (<N>), controller job <id>` on
+  - Output: `swf: starting at step "<name>" (<N>), controller job <id>` on
     stderr, then the run id alone on stdout.
   - `-s`: first step, name or number (default: step 1). `-d`: `cd` there
     first; jobs run from the directory `swf start` runs in (as today:
