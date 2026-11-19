@@ -12,7 +12,7 @@ fake_slurm_bin <- function() {
 }
 
 skip_if_no_runtime <- function() {
-  skip_on_os("windows")
+  skip_if_no_engine_bash()
   skip_if(!nzchar(Sys.which("bash")), "bash is not available")
   bin <- fake_slurm_bin()
   skip_if(

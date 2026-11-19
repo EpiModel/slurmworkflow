@@ -107,6 +107,20 @@ pixi run bash -c 'cd slurmworkflow && Rscript -e "pkgdown::build_site()"'
 Do not edit generated `NAMESPACE` or `man/*.Rd` by hand; regenerate them with
 `devtools::document()`.
 
+### What is tested where
+
+Building a workflow is pure R and runs everywhere. Only the engine (`swf`,
+`swf.d/*.sh`) needs `/bin/bash` >= 4.2 (its shebang is `#!/bin/bash`; a bash
+on the `PATH` does not help). Skip rules live in `tests/testthat/helper-platform.R`.
+
+| Test group | Linux | macOS | Windows |
+|---|---|---|---|
+| R unit tests (builder, `.swf` files, sbatch options) | yes | yes | yes, minus checks that need Unix permissions (`skip_if_no_posix_perms()`) |
+| Tests that run the engine (end-to-end, engine suite; `skip_if_no_engine_bash()`) | yes | only if `/bin/bash` >= 4.2 (never on stock macOS) | no |
+| "Old bash is refused clearly" (`test-runtime-engine.R`) | no | yes (stock bash 3.2) | no |
+| `tests/runtime/test-engine.sh`, plain and `BASH_COMPAT=4.2` (CI job `engine`) | yes | no | no |
+| `tests/runtime/test-engine.sh` on a real bash 4.2 (CI job `engine-bash42`, Docker `bash:4.2`) | yes | no | no |
+
 ## Ecosystem
 
 - **EpiModelHPC** provides higher-level templates wrapping these base templates.

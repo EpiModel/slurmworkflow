@@ -1,5 +1,5 @@
 local_swf_stub <- function(env = parent.frame()) {
-  skip_on_os("windows")
+  skip_if_no_posix_perms()
   directory <- withr::local_tempdir(.local_envir = env)
   command <- file.path(directory, "swf")
   log <- file.path(directory, "argv")
@@ -151,7 +151,7 @@ test_that("override values are validated with their key", {
 })
 
 test_that("a missing or non-executable swf command is reported", {
-  skip_on_os("windows")
+  skip_if_no_posix_perms()
   directory <- withr::local_tempdir()
   missing <- file.path(directory, "nope", "swf")
   withr::local_envvar(c(SWF_CMD = missing))

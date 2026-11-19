@@ -14,7 +14,6 @@ test_that("create_workflow writes the engine and resolved SWF files", {
 
   expect_true(dir.exists(root))
   expect_true(file.exists(file.path(root, "swf")))
-  expect_identical(unname(file.access(file.path(root, "swf"), mode = 1L)), 0L)
   expect_setequal(
     list.files(file.path(root, "swf.d")),
     c("lib.sh", "controller.sh", "job.sh", "workflow.swf",
@@ -128,4 +127,14 @@ test_that("0.1.x workflow directories are detected", {
       expect_error(load_workflow(), "0.1.x workflow")
     })
   }
+})
+
+test_that("create_workflow makes the swf command executable", {
+  skip_if_no_posix_perms()
+  directory <- withr::local_tempdir()
+  wf <- create_workflow("exec-bit", list(partition = "compute"), directory)
+  expect_identical(
+    unname(file.access(file.path(wf[["root"]], "swf"), mode = 1L)),
+    0L
+  )
 })
