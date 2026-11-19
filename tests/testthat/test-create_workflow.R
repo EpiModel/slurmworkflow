@@ -138,3 +138,14 @@ test_that("create_workflow makes the swf command executable", {
     0L
   )
 })
+
+test_that("create_wf_dir copies the template contents, not the directory", {
+  root <- file.path(withr::local_tempdir(), "wf")
+  create_wf_dir(list(root = root))
+
+  expect_true(file.exists(file.path(root, "swf")))
+  expect_false(dir.exists(file.path(root, "workflow")))
+  expect_true(dir.exists(file.path(root, "swf.d", "steps")))
+  expect_equal(file.access(file.path(root, "swf"), mode = 1L)[[1]], 0L)
+  expect_error(create_wf_dir(list(root = root)), "already exists")
+})

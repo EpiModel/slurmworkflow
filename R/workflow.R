@@ -44,10 +44,10 @@ create_workflow <- function(wf_name, default_sbatch_opts,
          call. = FALSE)
   }
 
-  wf_summary <- new_summary(fs::path(wf_common_dir, wf_name), sbatch_opts)
+  wf_summary <- new_summary(file.path(wf_common_dir, wf_name), sbatch_opts)
   check_legacy_workflow(wf_summary[["root"]])
   create_wf_dir(wf_summary)
-  swf_dir <- fs::path(wf_summary[["root"]], "swf.d")
+  swf_dir <- file.path(wf_summary[["root"]], "swf.d")
 
   workflow_values <- list()
   workflow_values[names(sbatch_opts)] <- sbatch_opts
@@ -62,7 +62,7 @@ create_workflow <- function(wf_name, default_sbatch_opts,
   if ("mail-user" %in% names(sbatch_opts)) {
     workflow_values[["ctrl.opt.mail-type"]] <- "FAIL"
   }
-  write_swf(workflow_values, fs::path(swf_dir, "workflow.swf"))
+  write_swf(workflow_values, file.path(swf_dir, "workflow.swf"))
 
   exclusive <- get_exclusive_sbatch_opts()
   rules <- stats::setNames(
@@ -71,7 +71,7 @@ create_workflow <- function(wf_name, default_sbatch_opts,
   )
   rules[["valid"]] <- paste(get_sbatch_opts_list(), collapse = " ")
   rules[["reserved"]] <- paste(get_reserved_sbatch_opts(), collapse = " ")
-  write_swf(rules, fs::path(swf_dir, "sbatch_rules.swf"))
+  write_swf(rules, file.path(swf_dir, "sbatch_rules.swf"))
 
   load_workflow(wf_summary[["root"]])
 }
@@ -135,7 +135,7 @@ add_workflow_step <- function(wf_summary, step_tmpl,
     stop(
       "Workflow steps must be numbered exactly 1..N; found: ",
       paste(found, collapse = ", "), ". Fix the step directories under ",
-      fs::path(wf_summary[["root"]], "swf.d", "steps"), " first.",
+      file.path(wf_summary[["root"]], "swf.d", "steps"), " first.",
       call. = FALSE
     )
   }
@@ -169,8 +169,8 @@ add_workflow_step <- function(wf_summary, step_tmpl,
   step_dir <- create_step_dir(wf_summary)
   step_complete <- FALSE
   on.exit({
-    if (!step_complete && fs::dir_exists(step_dir)) {
-      fs::dir_delete(step_dir)
+    if (!step_complete && dir.exists(step_dir)) {
+      unlink(step_dir, recursive = TRUE)
     }
   }, add = TRUE)
   wf_vars <- make_wf_vars(wf_summary)
@@ -224,7 +224,7 @@ add_workflow_step <- function(wf_summary, step_tmpl,
   }
   write_swf(
     contents,
-    fs::path(wf_vars[["SWF__CUR_DIR"]], "step.swf")
+    file.path(wf_vars[["SWF__CUR_DIR"]], "step.swf")
   )
   wf_summary <- load_workflow(wf_summary[["root"]])
   step_complete <- TRUE
@@ -335,7 +335,7 @@ load_workflow <- function(wf_root = NULL) {
 #' @noRd
 check_legacy_workflow <- function(wf_root) {
   legacy <- c("workflow.yaml", "start_workflow.sh")
-  found <- legacy[fs::file_exists(fs::path(wf_root, legacy))]
+  found <- legacy[file.exists(file.path(wf_root, legacy))]
   if (length(found) > 0L) {
     stop(
       "\"", wf_root, "\" is a slurmworkflow 0.1.x workflow (it contains ",

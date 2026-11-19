@@ -12,7 +12,7 @@ executable `swf` command and thin R wrappers.
 - **License:** MIT
 - **Version:** 0.2.0
 - **R requirement:** >= 4.1.0
-- **Hard dependency:** `fs`
+- **Hard dependencies:** none (base R only)
 - **Documentation:** https://epimodel.github.io/slurmworkflow/
 
 Backward compatibility with 0.1.x workflow directories is intentionally not

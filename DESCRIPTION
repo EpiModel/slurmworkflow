@@ -16,8 +16,6 @@ Description: Build multi-step workflows on Slurm-equipped high-performance
 License: MIT + file LICENSE
 Depends:
   R (>= 4.1.0)
-Imports:
-    fs
 Suggests:
     codetools,
     knitr,

@@ -218,7 +218,7 @@ swf_command <- function() {
   if (nzchar(command)) {
     return(command)
   }
-  fs::path(get_workflow_root(), "swf")
+  file.path(get_workflow_root(), "swf")
 }
 
 #' @keywords internal
@@ -230,8 +230,8 @@ run_swf <- function(args) {
   } else {
     unname(Sys.which(command))
   }
-  if (!nzchar(resolved) || !fs::file_exists(resolved) ||
-      fs::dir_exists(resolved) || file.access(resolved, mode = 1L) != 0L) {
+  if (!nzchar(resolved) || !file.exists(resolved) ||
+      dir.exists(resolved) || file.access(resolved, mode = 1L) != 0L) {
     stop(
       "`swf` not found at ", command, " (or not executable): set SWF_CMD, ",
       "or run inside a workflow job.",

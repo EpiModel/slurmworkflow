@@ -2,19 +2,27 @@
 
 #' @keywords internal
 #' @noRd
-get_templates_dir <- function() fs::path_package("slurmworkflow", "templates")
+get_templates_dir <- function() system.file("templates", package = "slurmworkflow", mustWork = TRUE)
 
 #' @keywords internal
 #' @noRd
 create_wf_dir <- function(wf_summary) {
   wf_root <- wf_summary[["root"]]
-  if (fs::dir_exists(wf_root)) {
+  if (dir.exists(wf_root)) {
     stop("The directory \"", wf_root, "\" already exists.", call. = FALSE)
   }
-  wf_tmpl_dir <- fs::path(get_templates_dir(), "workflow")
-  fs::dir_copy(wf_tmpl_dir, wf_root)
-  fs::file_chmod(fs::path(wf_root, "swf"), "+x")
-  fs::dir_create(fs::path(wf_root, "swf.d", "steps"))
+  wf_tmpl_dir <- file.path(get_templates_dir(), "workflow")
+  dir.create(wf_root, recursive = TRUE)
+  tmpl_files <- list.files(
+    wf_tmpl_dir, all.files = TRUE, full.names = TRUE, no.. = TRUE
+  )
+  copied <- file.copy(tmpl_files, wf_root, recursive = TRUE)
+  if (!all(copied)) {
+    stop("Failed to copy the workflow template to \"", wf_root, "\".",
+         call. = FALSE)
+  }
+  Sys.chmod(file.path(wf_root, "swf"), mode = "0755")
+  dir.create(file.path(wf_root, "swf.d", "steps"), recursive = TRUE)
   invisible(wf_summary)
 }
 
@@ -22,6 +30,17 @@ create_wf_dir <- function(wf_summary) {
 #' @noRd
 create_step_dir <- function(wf_summary) {
   step_dir <- make_wf_vars(wf_summary)[["SWF__CUR_DIR"]]
-  fs::dir_create(step_dir)
+  dir.create(step_dir, recursive = TRUE, showWarnings = FALSE)
   step_dir
+}
+
+#' Copy an R script to `<step_dir>/script.R` and return the new path.
+#' @keywords internal
+#' @noRd
+copy_step_script <- function(r_script, step_dir) {
+  dest <- file.path(step_dir, "script.R")
+  if (!file.copy(r_script, dest, overwrite = TRUE)) {
+    stop("Failed to copy \"", r_script, "\" to \"", dest, "\".", call. = FALSE)
+  }
+  dest
 }

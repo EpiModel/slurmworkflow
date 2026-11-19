@@ -52,7 +52,7 @@ step_tmpl_bash_script <- function(bash_script) {
 step_tmpl_rscript <- function(r_script, setup_lines = NULL) {
   function(instructions_script, wf_vars, ...) {
     step_dir <- wf_vars[["SWF__CUR_DIR"]]
-    r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
+    r_script <- copy_step_script(r_script, step_dir)
     instructions <- paste0("Rscript \"", r_script, "\"")
     instructions <- helper_use_setup_lines(instructions, setup_lines)
     helper_write_instructions(instructions, instructions_script)
@@ -96,11 +96,11 @@ step_tmpl_do_call <- function(what, args, setup_lines = NULL) {
 
   function(instructions_script, wf_vars, ...) {
     step_dir <- wf_vars[["SWF__CUR_DIR"]]
-    r_script <- fs::path(get_templates_dir(), "step_tmpl_do_call.R")
-    r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
+    r_script <- file.path(get_templates_dir(), "step_tmpl_do_call.R")
+    r_script <- copy_step_script(r_script, step_dir)
     instructions <- paste0("Rscript \"", r_script, "\"")
     instructions <- helper_use_setup_lines(instructions, setup_lines)
-    saveRDS(do_call_data, fs::path(step_dir, "do_call.rds"))
+    saveRDS(do_call_data, file.path(step_dir, "do_call.rds"))
     helper_write_instructions(instructions, instructions_script)
     list()
   }
@@ -174,11 +174,11 @@ step_tmpl_map <- function(FUN, ..., MoreArgs = NULL, setup_lines = NULL,
 
   function(instructions_script, wf_vars, ...) {
     step_dir <- wf_vars[["SWF__CUR_DIR"]]
-    r_script <- fs::path(get_templates_dir(), "step_tmpl_map.R")
-    r_script <- fs::file_copy(r_script, fs::path(step_dir, "script.R"))
+    r_script <- file.path(get_templates_dir(), "step_tmpl_map.R")
+    r_script <- copy_step_script(r_script, step_dir)
     instructions <- paste0("Rscript \"", r_script, "\"")
     instructions <- helper_use_setup_lines(instructions, setup_lines)
-    saveRDS(map_data, fs::path(step_dir, "map.rds"))
+    saveRDS(map_data, file.path(step_dir, "map.rds"))
     helper_write_instructions(instructions, instructions_script)
     list(
       sbatch_opts = list(

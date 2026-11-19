@@ -8,7 +8,7 @@ message(
 
 # Step Template ----------------------------------------------------------------
 step_dir <- Sys.getenv("SWF__CUR_DIR")
-swf__tmpl_elts <- readRDS(fs::path(step_dir, "do_call.rds"))
+swf__tmpl_elts <- readRDS(file.path(step_dir, "do_call.rds"))
 rm(step_dir)
 gc()
 message("###################\n")
