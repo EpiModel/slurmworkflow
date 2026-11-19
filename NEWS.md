@@ -1,5 +1,10 @@
 ## slurmworkflow 0.2.0
 
+### Dependencies
+
+- Dropped the `fs` dependency: slurmworkflow now uses base R only, and the
+  cluster-side R step templates no longer need `fs` installed.
+
 ### Platforms
 
 - The engine needs bash 4.2 or later at `/bin/bash`. Older bash (the 3.2 of
