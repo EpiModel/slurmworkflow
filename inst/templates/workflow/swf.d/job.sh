@@ -66,6 +66,11 @@ trap 'swf_on_signal TERM 15' TERM
 trap 'swf_on_signal INT 2' INT
 trap 'swf_on_signal HUP 1' HUP
 
+# First log line: where the job runs and the CPUs Slurm gave it on that node.
+printf 'swf: job %s on node %s with %s cpu(s)\n' "$SWF__FAILED_ID" \
+  "${SLURMD_NODENAME:-$(hostname 2>/dev/null || printf '?')}" \
+  "${SLURM_CPUS_ON_NODE:-$(nproc 2>/dev/null || printf '?')}" >&2
+
 if (( $# >= 2 )); then
   SWF_RUN_DIR="$1/swf.d/run/$2"
 fi

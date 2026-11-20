@@ -698,7 +698,8 @@ EOF
 
   # --element finds the slice of the last execution; --back counts executions.
   assert_eq "$LOGS/1_map_${MAP_JOBS[4]}_1.out" "$(must_capture "$WF/swf" log -s map -e 5)" 'element 5'
-  assert_eq 'pos=4' "$(cat "$("$WF/swf" log -s map -e 5)")" 'element 5 log content'
+  assert_eq "$(printf 'swf: job %s_1 on node fake-node with 2 cpu(s)\npos=4' "${MAP_JOBS[4]}")" \
+    "$(cat "$("$WF/swf" log -s map -e 5)")" 'element 5 log: node line, then payload'
   assert_eq "$LOGS/1_map_${MAP_JOBS[5]}_0.out" "$(must_capture "$WF/swf" log --step map --element 7)" 'element 7'
   assert_eq "$LOGS/1_map_${MAP_JOBS[3]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 0)" 'element 3'
   assert_eq "$LOGS/1_map_${MAP_JOBS[0]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 1)" 'element 3, previous execution'

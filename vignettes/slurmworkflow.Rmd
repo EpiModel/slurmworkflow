@@ -275,7 +275,8 @@ Run-specific state is under `swf.d/run/<run_id>/`; logs are under
 
 Job names and log paths are a public, stable format: step jobs are named
 `<wf>_<N>_<name>`, controllers `<wf>_ctrl`, and step logs are
-`log/<run_id>/<N>_<name>_<job>_<task>.out`.
+`log/<run_id>/<N>_<name>_<job>_<task>.out`. Each step log starts with the node
+and the CPUs the job got, such as `swf: job 123456_4 on node n042 with 8 cpu(s)`.
 
 ### The job environment
 

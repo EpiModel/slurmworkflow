@@ -156,6 +156,8 @@ while (( RUN_COUNT < MAX_JOBS )); do
       "SLURM_JOB_ID=$CURRENT_JOB_ID"
       "SLURM_JOB_NAME=$JOB_NAME"
       "SLURM_SUBMIT_DIR=$SUBMIT_DIR"
+      "SLURMD_NODENAME=fake-node"
+      "SLURM_CPUS_ON_NODE=2"
     )
     if [[ -n "$TASK" ]]; then
       SLURM_ENV+=(
@@ -171,7 +173,8 @@ while (( RUN_COUNT < MAX_JOBS )); do
     if [[ "$EXPORT_MODE" == ALL* ]]; then
       (
         cd "$WORK_DIR" || exit 125
-        export SLURM_JOB_ID="$CURRENT_JOB_ID" SLURM_JOB_NAME="$JOB_NAME" SLURM_SUBMIT_DIR="$SUBMIT_DIR"
+        export SLURM_JOB_ID="$CURRENT_JOB_ID" SLURM_JOB_NAME="$JOB_NAME" SLURM_SUBMIT_DIR="$SUBMIT_DIR" \
+          SLURMD_NODENAME=fake-node SLURM_CPUS_ON_NODE="2"
         if [[ -n "$TASK" ]]; then
           export SLURM_ARRAY_JOB_ID="$SELECTED_ID" SLURM_ARRAY_TASK_ID="$TASK" \
             SLURM_ARRAY_TASK_MIN="$ARRAY_MIN" SLURM_ARRAY_TASK_MAX="$ARRAY_MAX" \
