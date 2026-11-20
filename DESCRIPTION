@@ -1,7 +1,7 @@
 Package: slurmworkflow
 Title: Build workflows for the Slurm workload manager
 Version: 0.2.0
-Date: 2023-04-05
+Date: 2026-11-19
 Authors@R:
     c(person(given = "Adrien",
              family = "Le Guillou",
@@ -16,8 +16,6 @@ Description: Build multi-step workflows on Slurm-equipped high-performance
 License: MIT + file LICENSE
 Depends:
   R (>= 4.1.0)
-Imports:
-    fs
 Suggests:
     codetools,
     knitr,

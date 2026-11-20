@@ -14,11 +14,12 @@ new_summary <- function(wf_root, sbatch_opts) {
 #' @keywords internal
 #' @noRd
 summary_from_files <- function(wf_root) {
-  root <- fs::path(wf_root)
-  workflow <- read_swf(fs::path(root, "swf.d", "workflow.swf"))
-  steps_dir <- fs::path(root, "swf.d", "steps")
-  step_dirs <- if (fs::dir_exists(steps_dir)) {
-    fs::dir_ls(steps_dir, type = "directory")
+  root <- wf_root
+  workflow <- read_swf(file.path(root, "swf.d", "workflow.swf"))
+  steps_dir <- file.path(root, "swf.d", "steps")
+  step_dirs <- if (dir.exists(steps_dir)) {
+    dirs <- list.files(steps_dir, full.names = TRUE)
+    dirs[dir.exists(dirs)]
   } else {
     character()
   }
@@ -41,7 +42,7 @@ summary_from_files <- function(wf_root) {
     }
 
     steps <- lapply(order(numbers), function(i) {
-      contents <- read_swf(fs::path(step_dirs[[i]], "step.swf"))
+      contents <- read_swf(file.path(step_dirs[[i]], "step.swf"))
       list(
         number = numbers[[i]],
         name = names[[i]],
@@ -73,7 +74,7 @@ read_on_failure <- function(contents, step_dir) {
   if (!value %in% c("stop", "continue")) {
     stop(
       "Invalid `on_failure` value \"", value, "\" in ",
-      fs::path(step_dir, "step.swf"), ": use `stop` or `continue`.",
+      file.path(step_dir, "step.swf"), ": use `stop` or `continue`.",
       call. = FALSE
     )
   }

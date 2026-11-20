@@ -8,7 +8,7 @@ message(
 
 # Read the payload and the exact submission used for this array task ------------
 swf__step_dir <- Sys.getenv("SWF__CUR_DIR")
-swf__tmpl_elts <- readRDS(fs::path(swf__step_dir, "map.rds"))
+swf__tmpl_elts <- readRDS(file.path(swf__step_dir, "map.rds"))
 swf__submission_path <- Sys.getenv("SWF_SUBMISSION")
 swf__submission <- slurmworkflow::get_workflow_submission()
 swf__step_label <- paste0(Sys.getenv("SWF_CUR"), "_", Sys.getenv("SWF_CUR_NAME"))
