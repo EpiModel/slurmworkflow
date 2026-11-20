@@ -1,0 +1,225 @@
+#!/bin/bash
+# Minimal stateful sbatch replacement used by the runtime tests.
+
+set -e
+
+function sbatch_error {
+  printf 'sbatch: error: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ -n "${FAKE_SLURM_DIR:-}" ]] || sbatch_error 'FAKE_SLURM_DIR is required'
+# Test hook: refuse every submission.
+if [[ "${FAKE_SLURM_SBATCH_FAIL:-}" == 1 ]]; then
+  sbatch_error 'Batch job submission failed: Invalid partition name specified'
+fi
+mkdir -p "$FAKE_SLURM_DIR/jobs"
+
+ORIGINAL_ARGV=("$@")
+CLI_KEYS=()
+CLI_VALUES=()
+SCRIPT_ARG=''
+SCRIPT_ARGS=()
+SEEN_DOUBLE_DASH=0
+
+function cli_option {
+  local key="$1" value="$2"
+  CLI_KEYS+=("$key")
+  CLI_VALUES+=("$value")
+}
+
+function option_needs_value {
+  case "$1" in
+    array|dependency|output|job-name|export|chdir|error|open-mode|time|nodes|cpus-per-task|mem|mem-per-cpu) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Find the script and retain every command-line option as a separate element.
+while (( $# > 0 )); do
+  ARG="$1"
+  shift
+  if [[ "$ARG" == -- ]]; then
+    (( $# > 0 )) || sbatch_error 'no script supplied'
+    SCRIPT_ARG="$1"
+    shift
+    SCRIPT_ARGS=("$@")
+    break
+  elif [[ "$ARG" == --*=* ]]; then
+    cli_option "${ARG%%=*}" "${ARG#*=}"
+  elif [[ "$ARG" == --* ]]; then
+    KEY="${ARG#--}"
+    if option_needs_value "$KEY"; then
+      (( $# > 0 )) || sbatch_error "option $ARG requires an argument"
+      cli_option "$ARG" "$1"
+      shift
+    else
+      cli_option "$ARG" '__FLAG__'
+    fi
+  elif [[ "$ARG" == -* ]]; then
+    sbatch_error "unsupported short option: $ARG"
+  else
+    SCRIPT_ARG="$ARG"
+    SCRIPT_ARGS=("$@")
+    break
+  fi
+done
+[[ -n "$SCRIPT_ARG" ]] || sbatch_error 'no script supplied'
+[[ -f "$SCRIPT_ARG" ]] || sbatch_error "unable to open file $SCRIPT_ARG"
+SCRIPT_PATH="$(realpath "$SCRIPT_ARG")"
+
+declare -A OPTS=()
+OPTION_ORDER=()
+
+function set_option {
+  local key="$1" value="$2"
+  if [[ ! ${OPTS[$key]+present} ]]; then OPTION_ORDER+=("$key"); fi
+  OPTS[$key]="$value"
+}
+
+# Parse trusted #SBATCH directives from the job script itself. Unlike .swf
+# files, these are Slurm's own whitespace-delimited directive syntax.
+while IFS= read -r LINE || [[ -n "$LINE" ]]; do
+  LINE="${LINE%$'\r'}"
+  [[ "$LINE" =~ ^[[:space:]]*#SBATCH[[:space:]]+ ]] || continue
+  REST="${LINE#*#SBATCH}"
+  read -r -a DIRECTIVE_ARGS <<< "$REST"
+  INDEX=0
+  while (( INDEX < ${#DIRECTIVE_ARGS[@]} )); do
+    TOKEN="${DIRECTIVE_ARGS[$INDEX]}"
+    case "$TOKEN" in
+      --*=*)
+        set_option "${TOKEN%%=*}" "${TOKEN#*=}"
+        ;;
+      --*)
+        KEY="${TOKEN#--}"
+        if option_needs_value "$KEY"; then
+          (( INDEX + 1 < ${#DIRECTIVE_ARGS[@]} )) || sbatch_error "directive $TOKEN requires an argument"
+          INDEX=$((INDEX + 1))
+          set_option "$TOKEN" "${DIRECTIVE_ARGS[$INDEX]}"
+        else
+          set_option "$TOKEN" '__FLAG__'
+        fi
+        ;;
+      *) sbatch_error "invalid #SBATCH directive: $TOKEN" ;;
+    esac
+    INDEX=$((INDEX + 1))
+  done
+done < "$SCRIPT_PATH"
+
+INDEX=0
+while (( INDEX < ${#CLI_KEYS[@]} )); do
+  set_option "${CLI_KEYS[$INDEX]}" "${CLI_VALUES[$INDEX]}"
+  INDEX=$((INDEX + 1))
+done
+
+ARRAY_TASKS=''
+ARRAY_SPEC=''
+if [[ ${OPTS[--array]+present} ]]; then
+  ARRAY_SPEC="${OPTS[--array]}"
+  [[ -n "$ARRAY_SPEC" ]] || sbatch_error 'Invalid job array specification'
+fi
+
+function append_array_task {
+  local task="$1" old
+  [[ "$task" =~ ^[0-9]+$ ]] || return 1
+  for old in $ARRAY_TASKS; do [[ "$old" == "$task" ]] && return 1; done
+  if [[ -z "$ARRAY_TASKS" ]]; then ARRAY_TASKS="$task"; else ARRAY_TASKS="$ARRAY_TASKS $task"; fi
+}
+
+if [[ -n "$ARRAY_SPEC" ]]; then
+  if [[ "$ARRAY_SPEC" =~ ^([0-9]+)-([0-9]+)%([0-9]+)$ ]]; then
+    ARRAY_FIRST="${BASH_REMATCH[1]}"
+    ARRAY_LAST="${BASH_REMATCH[2]}"
+    ARRAY_THROTTLE="${BASH_REMATCH[3]}"
+    (( 10#$ARRAY_THROTTLE > 0 )) || sbatch_error 'Invalid job array specification'
+    (( 10#$ARRAY_LAST >= 10#$ARRAY_FIRST )) || sbatch_error 'Invalid job array specification'
+    for (( TASK = 10#$ARRAY_FIRST; TASK <= 10#$ARRAY_LAST; TASK++ )); do append_array_task "$TASK" || sbatch_error 'Invalid job array specification'; done
+  elif [[ "$ARRAY_SPEC" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+    ARRAY_FIRST="${BASH_REMATCH[1]}"
+    ARRAY_LAST="${BASH_REMATCH[2]}"
+    (( 10#$ARRAY_LAST >= 10#$ARRAY_FIRST )) || sbatch_error 'Invalid job array specification'
+    for (( TASK = 10#$ARRAY_FIRST; TASK <= 10#$ARRAY_LAST; TASK++ )); do append_array_task "$TASK" || sbatch_error 'Invalid job array specification'; done
+  elif [[ "$ARRAY_SPEC" =~ ^[0-9]+$ ]]; then
+    append_array_task "$ARRAY_SPEC" || sbatch_error 'Invalid job array specification'
+  elif [[ "$ARRAY_SPEC" =~ ^[0-9]+(,[0-9]+)+$ ]]; then
+    OLD_IFS="$IFS"
+    IFS=','
+    read -r -a ARRAY_PARTS <<< "$ARRAY_SPEC"
+    IFS="$OLD_IFS"
+    for TASK in "${ARRAY_PARTS[@]}"; do append_array_task "$TASK" || sbatch_error 'Invalid job array specification'; done
+  else
+    sbatch_error 'Invalid job array specification'
+  fi
+fi
+
+# Reserve an id under a tiny scheduler-side lock. Directories are made visible
+# only after all metadata is complete.
+COUNTER_LOCK="$FAKE_SLURM_DIR/counter.lock"
+while ! mkdir "$COUNTER_LOCK" 2>/dev/null; do sleep 0.02; done
+COUNTER=999
+[[ -f "$FAKE_SLURM_DIR/counter" ]] && COUNTER="$(< "$FAKE_SLURM_DIR/counter")"
+[[ "$COUNTER" =~ ^[0-9]+$ ]] || COUNTER=999
+JOB_ID=$((10#$COUNTER + 1))
+printf '%s\n' "$JOB_ID" > "$FAKE_SLURM_DIR/.counter.tmp.$$"
+mv "$FAKE_SLURM_DIR/.counter.tmp.$$" "$FAKE_SLURM_DIR/counter"
+TMP_DIR="$FAKE_SLURM_DIR/jobs/.tmp.${JOB_ID}.$$"
+JOB_DIR="$FAKE_SLURM_DIR/jobs/$JOB_ID"
+
+function release_counter {
+  rmdir "$COUNTER_LOCK" 2>/dev/null || true
+}
+trap release_counter EXIT
+mkdir "$TMP_DIR"
+
+printf 'PENDING\n' > "$TMP_DIR/state"
+printf '%s' "$SCRIPT_PATH" > "$TMP_DIR/script"
+printf '%s' "$PWD" > "$TMP_DIR/submit_dir"
+if (( ${#SCRIPT_ARGS[@]} > 0 )); then
+  printf '%s\0' "${SCRIPT_ARGS[@]}" > "$TMP_DIR/args"
+else
+  : > "$TMP_DIR/args"
+fi
+printf '%s\0' "${ORIGINAL_ARGV[@]}" > "$TMP_DIR/argv"
+printf '%s' "$ARRAY_TASKS" > "$TMP_DIR/array_tasks"
+printf '%s' "$ARRAY_SPEC" > "$TMP_DIR/array"
+
+function metadata_option {
+  local key="$1" default="$2" file="$3"
+  if [[ ${OPTS[$key]+present} ]]; then
+    printf '%s' "${OPTS[$key]}" > "$TMP_DIR/$file"
+  else
+    printf '%s' "$default" > "$TMP_DIR/$file"
+  fi
+}
+metadata_option --job-name "${SCRIPT_PATH##*/}" job_name
+metadata_option --output '' output
+metadata_option --export ALL export
+metadata_option --dependency '' dependency
+metadata_option --chdir '' chdir
+{
+  for KEY in "${OPTION_ORDER[@]}"; do
+    if [[ "${OPTS[$KEY]}" == '__FLAG__' ]]; then
+      printf '%s\0' "$KEY"
+    else
+      printf '%s=%s\0' "$KEY" "${OPTS[$KEY]}"
+    fi
+  done
+} > "$TMP_DIR/options"
+if [[ ${OPTS[--dependency]+present} ]] && [[ "${OPTS[--dependency]}" == afterany:* ]]; then
+  DEP_LIST="${OPTS[--dependency]#afterany:}"
+  OLD_IFS="$IFS"; IFS=':'; read -r -a DEP_PARTS <<< "$DEP_LIST"; IFS="$OLD_IFS"
+  for DEP in "${DEP_PARTS[@]}"; do [[ "$DEP" =~ ^[0-9]+$ ]] || sbatch_error 'Invalid dependency specification'; done
+elif [[ ${OPTS[--dependency]+present} ]] && [[ -n "${OPTS[--dependency]}" ]]; then
+  sbatch_error 'Invalid dependency specification'
+fi
+
+mv "$TMP_DIR" "$JOB_DIR"
+release_counter
+trap - EXIT
+
+if [[ ${OPTS[--parsable]+present} ]]; then
+  printf '%s\n' "$JOB_ID"
+else
+  printf 'Submitted batch job %s\n' "$JOB_ID"
+fi

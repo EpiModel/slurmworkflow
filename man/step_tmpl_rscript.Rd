@@ -7,26 +7,21 @@
 step_tmpl_rscript(r_script, setup_lines = NULL)
 }
 \arguments{
-\item{r_script}{The R script to be run by the workflow step}
+\item{r_script}{The R script to be run by the workflow step.}
 
-\item{setup_lines}{(optional) a vector of bash lines to be run first.
-This can be used to load the required modules (like R, python, etc).}
+\item{setup_lines}{Optional vector of bash lines to run first, typically to
+load the required modules.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
-Contrary to \code{step_tmpl_do_call_script}, this function copies the content of
-the script to the workflow folder. Therefore, the script do not have to exist
-on the HPC when using this template.
+The script is copied into the workflow, so the original file need not be
+present on the HPC.
 }
-\section{Step Template}{
+\section{Step Templates}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

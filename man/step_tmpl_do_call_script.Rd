@@ -2,32 +2,27 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_do_call_script}
 \alias{step_tmpl_do_call_script}
-\title{Step Template to Run an R Script With a Set of Arguments}
+\title{Step Template to Run an R Script With Arguments}
 \usage{
 step_tmpl_do_call_script(r_script, args = list(), setup_lines = NULL)
 }
 \arguments{
-\item{r_script}{The R script to be run by the workflow step}
+\item{r_script}{The R script to be run by the workflow step.}
 
-\item{args}{a \emph{list} of arguments to the function call. The \code{names}
-attribute of \code{args} gives the argument names.}
+\item{args}{A list of arguments to the function call.}
 
-\item{setup_lines}{(optional) a vector of bash lines to be run first.
-This can be used to load the required modules (like R, python, etc).}
+\item{setup_lines}{Optional vector of bash lines to run first, typically to
+load the required modules.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
-Step Template to Run an R Script With a Set of Arguments
+Step Template to Run an R Script With Arguments
 }
-\section{Step Template}{
+\section{Step Templates}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

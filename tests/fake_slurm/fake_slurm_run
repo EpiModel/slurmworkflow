@@ -1,0 +1,236 @@
+#!/bin/bash
+set -e
+
+[[ -n "${FAKE_SLURM_DIR:-}" ]] || { printf 'fake_slurm_run: error: FAKE_SLURM_DIR is required\n' >&2; exit 1; }
+ONE=0
+MAX_JOBS=500
+while (( $# > 0 )); do
+  case "$1" in
+    --one) ONE=1; shift ;;
+    --max-jobs) (( $# >= 2 )) || { printf 'fake_slurm_run: --max-jobs requires a number\n' >&2; exit 1; }; MAX_JOBS="$2"; shift 2 ;;
+    --max-jobs=*) MAX_JOBS="${1#*=}"; shift ;;
+    -h|--help) printf 'usage: fake_slurm_run [--one] [--max-jobs N]\n'; exit 0 ;;
+    *) printf 'fake_slurm_run: unknown argument: %s\n' "$1" >&2; exit 1 ;;
+  esac
+done
+[[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]] || { printf 'fake_slurm_run: invalid --max-jobs value\n' >&2; exit 1; }
+# FAKE_SLURM_KILL_AFTER=<seconds> sends TERM to the process group of every job
+# (or task) still running after that time, like a Slurm time limit; its state
+# becomes TIMEOUT. FAKE_SLURM_KILL_NAME (a glob, default *) limits it to job
+# names that match.
+KILL_AFTER="${FAKE_SLURM_KILL_AFTER:-}"
+KILL_NAME="${FAKE_SLURM_KILL_NAME:-*}"
+[[ -z "$KILL_AFTER" || "$KILL_AFTER" =~ ^[1-9][0-9]*$ ]] || { printf 'fake_slurm_run: invalid FAKE_SLURM_KILL_AFTER\n' >&2; exit 1; }
+
+function set_state {
+  local dir="$1" state="$2"
+  printf '%s\n' "$state" > "$dir/.state.tmp.$$"
+  mv "$dir/.state.tmp.$$" "$dir/state"
+}
+
+function dependencies_finished {
+  local dir="$1" dep state
+  local dependency=''
+  [[ -f "$dir/dependency" ]] && dependency="$(< "$dir/dependency")"
+  [[ -n "$dependency" ]] || return 0
+  [[ "$dependency" == afterany:* ]] || return 1
+  dependency="${dependency#afterany:}"
+  OLD_IFS="$IFS"; IFS=':'; read -r -a DEPENDENCIES <<< "$dependency"; IFS="$OLD_IFS"
+  for dep in "${DEPENDENCIES[@]}"; do
+    [[ -d "$FAKE_SLURM_DIR/jobs/$dep" ]] || return 1
+    state="$(< "$FAKE_SLURM_DIR/jobs/$dep/state")"
+    [[ "$state" == COMPLETED || "$state" == FAILED || "$state" == CANCELLED || "$state" == TIMEOUT ]] || return 1
+  done
+  return 0
+}
+
+function task_was_cancelled {
+  local dir="$1" task="$2"
+  [[ -f "$dir/cancelled_tasks" ]] && grep -qx "$task" "$dir/cancelled_tasks"
+}
+
+function new_task_job_id {
+  local counter=999
+  [[ -f "$FAKE_SLURM_DIR/counter" ]] && counter="$(< "$FAKE_SLURM_DIR/counter")"
+  [[ "$counter" =~ ^[0-9]+$ ]] || counter=999
+  counter=$((10#$counter + 1))
+  printf '%s\n' "$counter" > "$FAKE_SLURM_DIR/.counter.tmp.runner.$$"
+  mv "$FAKE_SLURM_DIR/.counter.tmp.runner.$$" "$FAKE_SLURM_DIR/counter"
+  NEW_TASK_JOB_ID="$counter"
+}
+
+RUN_COUNT=0
+while (( RUN_COUNT < MAX_JOBS )); do
+  SELECTED_DIR=''
+  SELECTED_ID=''
+  for DIR in "$FAKE_SLURM_DIR"/jobs/*/; do
+    [[ -d "$DIR" ]] || continue
+    DIR="${DIR%/}"
+    ID="${DIR##*/}"
+    [[ "$ID" =~ ^[0-9]+$ ]] || continue
+    [[ "$(< "$DIR/state")" == PENDING ]] || continue
+    dependencies_finished "$DIR" || continue
+    if [[ -z "$SELECTED_ID" ]] || (( 10#$ID < 10#$SELECTED_ID )); then
+      SELECTED_ID="$ID"
+      SELECTED_DIR="$DIR"
+    fi
+  done
+  [[ -n "$SELECTED_ID" ]] || break
+
+  RUN_COUNT=$((RUN_COUNT + 1))
+  set_state "$SELECTED_DIR" RUNNING
+  SCRIPT="$(< "$SELECTED_DIR/script")"
+  SUBMIT_DIR="$(< "$SELECTED_DIR/submit_dir")"
+  JOB_NAME="$(< "$SELECTED_DIR/job_name")"
+  EXPORT_MODE="$(< "$SELECTED_DIR/export")"
+  CHDIR_VALUE=''
+  [[ -f "$SELECTED_DIR/chdir" ]] && CHDIR_VALUE="$(< "$SELECTED_DIR/chdir")"
+  WORK_DIR="$SUBMIT_DIR"
+  if [[ -n "$CHDIR_VALUE" ]]; then
+    if [[ "$CHDIR_VALUE" == /* ]]; then WORK_DIR="$CHDIR_VALUE"; else WORK_DIR="$SUBMIT_DIR/$CHDIR_VALUE"; fi
+  fi
+  TASKS="$(< "$SELECTED_DIR/array_tasks")"
+  JOB_ARGS=()
+  while IFS= read -r -d '' ARG; do JOB_ARGS+=("$ARG"); done < "$SELECTED_DIR/args"
+
+  EXPORT_VALUES=()
+  EXPORT_WITHOUT_MODE="$EXPORT_MODE"
+  EXPORT_WITHOUT_MODE="${EXPORT_WITHOUT_MODE#NONE}"
+  EXPORT_WITHOUT_MODE="${EXPORT_WITHOUT_MODE#ALL}"
+  EXPORT_WITHOUT_MODE="${EXPORT_WITHOUT_MODE#,}"
+  if [[ -n "$EXPORT_WITHOUT_MODE" ]]; then
+    OLD_IFS="$IFS"; IFS=','; read -r -a EXPORT_PARTS <<< "$EXPORT_WITHOUT_MODE"; IFS="$OLD_IFS"
+    for EXPORT_PART in "${EXPORT_PARTS[@]}"; do
+      [[ "$EXPORT_PART" == *=* && "${EXPORT_PART%%=*}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+      EXPORT_VALUES+=("$EXPORT_PART")
+    done
+  fi
+
+  if [[ -n "$TASKS" ]]; then
+    TASK_LIST=($TASKS)
+    ARRAY_MIN="${TASK_LIST[0]}"
+    ARRAY_MAX="${TASK_LIST[0]}"
+    ARRAY_COUNT="${#TASK_LIST[@]}"
+    for TASK in "${TASK_LIST[@]}"; do
+      if (( 10#$TASK < 10#$ARRAY_MIN )); then ARRAY_MIN="$TASK"; fi
+      if (( 10#$TASK > 10#$ARRAY_MAX )); then ARRAY_MAX="$TASK"; fi
+    done
+    RUN_TASKS=("${TASK_LIST[@]}")
+  else
+    RUN_TASKS=('')
+    ARRAY_MIN=''
+    ARRAY_MAX=''
+    ARRAY_COUNT=''
+  fi
+
+  JOB_FAILED=0
+  JOB_TIMEOUT=0
+  ANY_TASK_RUN=0
+  LIMIT=()
+  # shellcheck disable=SC2053
+  if [[ -n "$KILL_AFTER" && "$JOB_NAME" == $KILL_NAME ]]; then
+    LIMIT=(timeout -s TERM "$KILL_AFTER")
+  fi
+  # The task itself is empty for a non-array job.
+  for TASK in ${RUN_TASKS[@]+"${RUN_TASKS[@]}"}; do
+    if [[ -n "$TASK" ]] && task_was_cancelled "$SELECTED_DIR" "$TASK"; then continue; fi
+    ANY_TASK_RUN=1
+    if [[ -n "$TASK" ]]; then
+      new_task_job_id
+      CURRENT_JOB_ID="$NEW_TASK_JOB_ID"
+      TASK_OUTPUT_ID="$TASK"
+    else
+      CURRENT_JOB_ID="$SELECTED_ID"
+      TASK_OUTPUT_ID=4294967294
+    fi
+
+    OUTPUT_PATTERN="$(< "$SELECTED_DIR/output")"
+    if [[ -z "$OUTPUT_PATTERN" ]]; then OUTPUT_PATTERN='slurm-%j.out'; fi
+    OUTPUT_FILE="${OUTPUT_PATTERN//%x/$JOB_NAME}"
+    OUTPUT_FILE="${OUTPUT_FILE//%j/$SELECTED_ID}"
+    OUTPUT_FILE="${OUTPUT_FILE//%A/$SELECTED_ID}"
+    OUTPUT_FILE="${OUTPUT_FILE//%a/$TASK_OUTPUT_ID}"
+    if [[ "$OUTPUT_FILE" != /* ]]; then OUTPUT_FILE="$WORK_DIR/$OUTPUT_FILE"; fi
+
+    SLURM_ENV=(
+      "SLURM_JOB_ID=$CURRENT_JOB_ID"
+      "SLURM_JOB_NAME=$JOB_NAME"
+      "SLURM_SUBMIT_DIR=$SUBMIT_DIR"
+      "SLURMD_NODENAME=fake-node"
+      "SLURM_CPUS_ON_NODE=2"
+    )
+    if [[ -n "$TASK" ]]; then
+      SLURM_ENV+=(
+        "SLURM_ARRAY_JOB_ID=$SELECTED_ID"
+        "SLURM_ARRAY_TASK_ID=$TASK"
+        "SLURM_ARRAY_TASK_MIN=$ARRAY_MIN"
+        "SLURM_ARRAY_TASK_MAX=$ARRAY_MAX"
+        "SLURM_ARRAY_TASK_COUNT=$ARRAY_COUNT"
+      )
+    fi
+
+    set +e
+    if [[ "$EXPORT_MODE" == ALL* ]]; then
+      (
+        cd "$WORK_DIR" || exit 125
+        export SLURM_JOB_ID="$CURRENT_JOB_ID" SLURM_JOB_NAME="$JOB_NAME" SLURM_SUBMIT_DIR="$SUBMIT_DIR" \
+          SLURMD_NODENAME=fake-node SLURM_CPUS_ON_NODE="2"
+        if [[ -n "$TASK" ]]; then
+          export SLURM_ARRAY_JOB_ID="$SELECTED_ID" SLURM_ARRAY_TASK_ID="$TASK" \
+            SLURM_ARRAY_TASK_MIN="$ARRAY_MIN" SLURM_ARRAY_TASK_MAX="$ARRAY_MAX" \
+            SLURM_ARRAY_TASK_COUNT="$ARRAY_COUNT"
+        fi
+        for EXPORT_PART in ${EXPORT_VALUES[@]+"${EXPORT_VALUES[@]}"}; do export "$EXPORT_PART"; done
+        ${LIMIT[@]+"${LIMIT[@]}"} bash "$SCRIPT" ${JOB_ARGS[@]+"${JOB_ARGS[@]}"}
+      ) >> "$OUTPUT_FILE" 2>&1
+      STATUS=$?
+    else
+      ENV_BASE=(
+        "HOME=${HOME:-/tmp}" "PATH=${PATH:-/usr/bin:/bin}"
+        "USER=${USER:-$(id -un)}" "LANG=${LANG:-C}"
+        "FAKE_SLURM_DIR=$FAKE_SLURM_DIR"
+        "FAKE_SLURM_KEEP_ENV=${FAKE_SLURM_KEEP_ENV:-}"
+      )
+      for KEEP_NAME in ${FAKE_SLURM_KEEP_ENV:-}; do
+        [[ "$KEEP_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        if [[ ${!KEEP_NAME+present} ]]; then ENV_BASE+=("$KEEP_NAME=${!KEEP_NAME}"); fi
+      done
+      (
+        cd "$WORK_DIR" || exit 125
+        ${LIMIT[@]+"${LIMIT[@]}"} env -i "${ENV_BASE[@]}" ${EXPORT_VALUES[@]+"${EXPORT_VALUES[@]}"} \
+          "${SLURM_ENV[@]}" bash "$SCRIPT" ${JOB_ARGS[@]+"${JOB_ARGS[@]}"}
+      ) >> "$OUTPUT_FILE" 2>&1
+      STATUS=$?
+    fi
+    set -e
+    printf '%s\n' "$STATUS" > "$SELECTED_DIR/exit_${TASK:-single}.$CURRENT_JOB_ID"
+    if (( STATUS != 0 )); then JOB_FAILED=1; fi
+    if (( ${#LIMIT[@]} > 0 && STATUS == 124 )); then JOB_TIMEOUT=1; fi
+  done
+
+  if (( ! ANY_TASK_RUN )); then
+    set_state "$SELECTED_DIR" CANCELLED
+    FINAL_STATE=CANCELLED
+  elif (( JOB_TIMEOUT )); then
+    set_state "$SELECTED_DIR" TIMEOUT
+    FINAL_STATE=TIMEOUT
+  elif (( JOB_FAILED )); then
+    set_state "$SELECTED_DIR" FAILED
+    FINAL_STATE=FAILED
+  else
+    set_state "$SELECTED_DIR" COMPLETED
+    FINAL_STATE=COMPLETED
+  fi
+  printf '%s %s %s\n' "$SELECTED_ID" "$JOB_NAME" "$FINAL_STATE"
+  if (( ONE )); then exit 0; fi
+done
+
+if (( RUN_COUNT >= MAX_JOBS )); then
+  for DIR in "$FAKE_SLURM_DIR"/jobs/*/; do
+    [[ -d "$DIR" ]] || continue
+    if [[ "$(< "${DIR%/}/state")" == PENDING ]] && dependencies_finished "${DIR%/}"; then
+      printf 'fake_slurm_run: maximum job count (%s) reached\n' "$MAX_JOBS" >&2
+      exit 2
+    fi
+  done
+fi

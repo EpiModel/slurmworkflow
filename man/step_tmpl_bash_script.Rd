@@ -7,21 +7,17 @@
 step_tmpl_bash_script(bash_script)
 }
 \arguments{
-\item{bash_script}{Path to the script to be run by the workflow step}
+\item{bash_script}{Path to the script to be run by the workflow step.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
 Step Template to Run a Bash Script
 }
-\section{Step Template}{
+\section{Step Templates}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

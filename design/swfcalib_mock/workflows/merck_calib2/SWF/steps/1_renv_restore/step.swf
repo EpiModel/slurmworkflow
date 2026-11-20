@@ -1,0 +1,7 @@
+#!swf-v1
+opt.partition=epimodel,short-cpu,day-long-cpu,week-long-cpu,month-long-cpu
+opt.mail-type=FAIL
+opt.mail-user=user@example.edu
+opt.mem=16G
+opt.cpus-per-task=4
+opt.time=180

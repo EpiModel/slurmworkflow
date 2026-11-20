@@ -6,7 +6,7 @@
 \alias{slurmworkflow-package}
 \title{slurmworkflow: Build workflows for the Slurm workload manager}
 \description{
-slurmworkflow makes it possible to locally pre-define a set of jobs to be run on a slurm equipped HPC. A workflow is a set of steps to be run on the HPC (sequentially by default). slurmworkflow provides tools to alter the execution order, allowing conditional execution of the steps and loop like behavior.
+Build multi-step workflows on Slurm-equipped high-performance computing clusters. Named steps can run sequentially, branch, or loop through static successors and one-shot runtime messages. A bash-only controller submits resolved jobs, while R helpers provide templates, array mapping, dynamic map sizes, and thin wrappers around the workflow command.
 }
 \seealso{
 Useful links:

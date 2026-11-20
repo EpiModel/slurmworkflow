@@ -1,0 +1,52 @@
+#!/bin/bash
+set -e
+
+[[ -n "${FAKE_SLURM_DIR:-}" ]] || { printf 'scancel: error: FAKE_SLURM_DIR is required\n' >&2; exit 1; }
+(( $# > 0 )) || { printf 'scancel: error: no job ids supplied\n' >&2; exit 1; }
+# Test hook: fail without cancelling anything.
+if [[ "${FAKE_SLURM_SCANCEL_FAIL:-}" == 1 ]]; then
+  printf 'scancel: error: Unable to contact slurm controller (connect failure)\n' >&2
+  exit 1
+fi
+
+for REFERENCE in "$@"; do
+  ID="${REFERENCE%%_*}"
+  TASK=''
+  [[ "$REFERENCE" == *_* ]] && TASK="${REFERENCE#*_}"
+  DIR="$FAKE_SLURM_DIR/jobs/$ID"
+  if [[ ! "$ID" =~ ^[0-9]+$ || ( -n "$TASK" && ! "$TASK" =~ ^[0-9]+$ ) || ! -d "$DIR" ]]; then
+    printf 'scancel: warning: unknown job %s\n' "$REFERENCE" >&2
+    continue
+  fi
+  STATE="$(< "$DIR/state")"
+  if [[ "$STATE" != PENDING && "$STATE" != RUNNING ]]; then
+    printf 'scancel: warning: job %s is already %s\n' "$REFERENCE" "$STATE" >&2
+    continue
+  fi
+
+  if [[ -z "$TASK" ]]; then
+    printf 'CANCELLED\n' > "$DIR/.state.tmp.$$"
+    mv "$DIR/.state.tmp.$$" "$DIR/state"
+    continue
+  fi
+
+  TASKS="$(< "$DIR/array_tasks")"
+  FOUND=0
+  for ITEM in $TASKS; do [[ "$ITEM" == "$TASK" ]] && FOUND=1; done
+  if (( ! FOUND )); then
+    printf 'scancel: warning: unknown job %s\n' "$REFERENCE" >&2
+    continue
+  fi
+  if ! grep -qx "$TASK" "$DIR/cancelled_tasks" 2>/dev/null; then
+    printf '%s\n' "$TASK" >> "$DIR/cancelled_tasks"
+  fi
+
+  ALL_CANCELLED=1
+  for ITEM in $TASKS; do
+    if ! grep -qx "$ITEM" "$DIR/cancelled_tasks" 2>/dev/null; then ALL_CANCELLED=0; fi
+  done
+  if (( ALL_CANCELLED )); then
+    printf 'CANCELLED\n' > "$DIR/.state.tmp.$$"
+    mv "$DIR/.state.tmp.$$" "$DIR/state"
+  fi
+done

@@ -2,18 +2,18 @@
 % Please edit documentation in R/workflow.R
 \name{load_workflow}
 \alias{load_workflow}
-\title{Load a Workflow Summary From a Workflow Folder or the Environment}
+\title{Load a Workflow Summary From Files or the Running Workflow Environment}
 \usage{
 load_workflow(wf_root = NULL)
 }
 \arguments{
-\item{wf_root}{Path to a workflow directory. If not provided, the function
-assumes that the workflow is running on an HPC and pulls the value using
-environment variables.}
+\item{wf_root}{Path to a workflow directory. If omitted, \code{SWF_ROOT} is used.}
 }
 \value{
-The workflow summary
+A list with \code{name}, \code{root}, \code{default_sbatch_opts}, and \code{steps}. Each
+step contains \code{number}, \code{name}, \code{next}, \code{sbatch_opts}, \code{data}, and
+\code{on_failure}.
 }
 \description{
-Load a Workflow Summary From a Workflow Folder or the Environment
+Load a Workflow Summary From Files or the Running Workflow Environment
 }

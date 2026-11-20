@@ -4,60 +4,67 @@
 \alias{add_workflow_step}
 \title{Add a Step to an Existing Workflow}
 \usage{
-add_workflow_step(wf_summary, step_tmpl, sbatch_opts = NULL, step_name = NULL)
+add_workflow_step(
+  wf_summary,
+  step_tmpl,
+  sbatch_opts = NULL,
+  step_name = NULL,
+  next_step = NULL,
+  on_failure = c("stop", "continue")
+)
 }
 \arguments{
-\item{wf_summary}{The workflow summary object}
+\item{wf_summary}{The workflow summary.}
 
-\item{step_tmpl}{A step template function, see the Step Template section for
-details.}
+\item{step_tmpl}{A step template function. See the Step Template section.}
 
-\item{sbatch_opts}{A named list of sbatch options to overwrite or complement
-the default ones (default = NULL). (see the SBATCH Options section for
-details).}
+\item{sbatch_opts}{A named list of sbatch options that replace or complement
+the workflow defaults.}
 
-\item{step_name}{An optional name for the step}
+\item{step_name}{A unique step name matching
+\verb{^[A-Za-z][A-Za-z0-9_-]*$}. Defaults to \verb{step_<N>}.}
+
+\item{next_step}{The step to run after this one: a step name (which may be
+added later), the number of an existing step, or \code{NA}/\code{""} to end the
+workflow. \code{NULL} (the default) uses the following step in build order.}
+
+\item{on_failure}{What the workflow does after this step fails (any job or
+array task exits non-zero, is killed, or cannot start): \code{"stop"} (the
+default) stops the run before the next step, with an \code{error} event in the
+run history; \code{"continue"} records the failure and runs the next step
+anyway. Only \code{"continue"} is written to \code{step.swf} (\code{on_failure=continue}).}
 }
 \value{
-The updated workflow summary
+The updated workflow summary, rebuilt from files.
 }
 \description{
-Add a Step to an Existing Workflow
+The step is stored as \verb{swf.d/steps/<N>_<name>/}. Its \code{step.swf} contains the
+fully resolved options, template data, and an optional static successor.
 }
 \section{Step Template}{
 
-A step template is a
-\href{https://adv-r.hadley.nz/function-factories.html}{function factory} used to
-simplify the setup of a step. The \code{slurmworkflow} package provides several
-simple ones like \code{step_tmpl_bash_script} that takes a bash script to be run
-as argument or \code{step_tmpl_r_script} that takes an R script to be run as
-argument with an optional \code{setup_script} to load the required modules
-beforehand.
+A step template is a function with signature \verb{function(instructions_script, wf_vars, wf_summary, sbatch_opts, ...)}. It writes the files needed by the
+step and returns \code{NULL}, \code{list()}, or a list containing optional named
+\code{sbatch_opts} and \code{data} lists. Data names are flat; \code{map.total} is written
+as \code{data.map.total} in \code{step.swf}.
 }
 
 \section{SBATCH Options}{
 
-The \code{sbatch_opts} named list accepts all existing arguments to sbatch. It
-only works with the long form (e.g. "job-name" instead of "J"). The full list
-of arguments is available in the
-\href{https://slurm.schedmd.com/sbatch.html}{sbacth documentation}. Some arguments
-like "mem", "mem-per-cpu" and "mem-per-gpu" are mutually exclusive, providing
-multiple of them will result in an error. However, if one is set at the
-creation of the workflow in \code{default_sbatch_opts} (e.g. "mem") and another
-at the addition of a step in \code{sbatch_opts} (e.g. "mem-per-gpu"), the second
-one will be used.
+Use sbatch long option names (for example, \code{job-name}, not \code{J}). Options set
+on a step replace workflow defaults. Setting one option in an exclusive group,
+such as \code{mem-per-cpu}, removes the other options in that group from the
+resolved submission. Values are written verbatim to the \code{.swf} files.
 }
 
 \examples{
 \dontrun{
 wf <- add_workflow_step(
-  step_tmpl_r_script(r_script = "R/abce-abc.R", setup_script = "loadR.sh"),
-  sbatch_opts = list(
-    "mem-per-cpu" = "4G",
-    "cpus-per-task" = 28,
-    "time" = 500
-  ),
-  step_name = "abc"
+  wf,
+  step_tmpl_bash_lines(c("module load R", "Rscript analysis.R")),
+  sbatch_opts = list(mem = "8G", time = 60),
+  step_name = "analysis",
+  next_step = NA
 )
 }
 

@@ -3,35 +3,41 @@ template:
   bootstrap: 5
 
 reference:
-- title: "Workflow Creation"
+- title: "Workflow creation"
   desc: >
-    Functions to create and edit a workflow
+    Create, extend, and reload workflow designs.
   contents:
   - create_workflow
   - add_workflow_step
+  - load_workflow
 
-- title: "Step Templates"
+- title: "Step templates"
   desc: >
-    Functions governing what is run by a step.
+    Define what each workflow step runs.
   contents:
   - starts_with("step_tmpl")
 
-- title: "Changing the Execution Order"
+- title: "Running workflow context"
   desc: >
-    Functions to query the currently running step and change the step to be run
-    next. These functions are to be used inside a workflow running on an HPC.
-    They allow conditional execution and loop like behavior.
-  contents:
-  - change_next_workflow_step
-  - get_current_workflow_step
-
-- title: "Utilities for Making Custom Step Templates"
-  desc: >
-    Functions used to create custom step templates from scratch.
-    In most case, a new step template can be created as a wrapper around one of
-    the existing templates.
+    Query the current run and its resolved submission.
   contents:
   - get_workflow_root
-  - load_workflow
+  - get_current_workflow_step
+  - get_current_workflow_step_name
+  - get_workflow_submission
+
+- title: "Dynamic execution"
+  desc: >
+    Create one-shot successor and submission changes. These low-level controls
+    can skip work or create loops and require careful use.
+  contents:
+  - change_next_workflow_step
+  - override_workflow_step
+  - set_map_size
+
+- title: "Utilities for custom step templates"
+  desc: >
+    Helpers for templates and instruction scripts.
+  contents:
   - helper_use_setup_lines
   - helper_write_instructions

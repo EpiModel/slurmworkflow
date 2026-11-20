@@ -2,50 +2,59 @@
 % Please edit documentation in R/step_templates.R
 \name{step_tmpl_map}
 \alias{step_tmpl_map}
-\title{Step Template to Run an R Function With a Set of Arguments}
+\title{Step Template to Map an R Function Over Arguments}
 \usage{
 step_tmpl_map(
   FUN,
   ...,
   MoreArgs = NULL,
   setup_lines = NULL,
-  max_array_size = Inf
+  max_array_size = Inf,
+  array_throttle = NULL
 )
 }
 \arguments{
-\item{FUN}{The R function to be run by the workflow step}
+\item{FUN}{The R function to be run by the workflow step.}
 
-\item{...}{arguments to vectorize over (vectors or lists of strictly
-positive length, or all of zero length).  See also ‘Details’.}
+\item{...}{Vectors or lists to iterate over. At least one iterator is
+required, all iterators must have the same non-zero length.}
 
-\item{MoreArgs}{a \code{list} of arguments to the function call. The \emph{names}
-attribute of \code{args} gives the argument names.}
+\item{MoreArgs}{A list of fixed arguments passed to every function call.}
 
-\item{setup_lines}{(optional) a vector of bash lines to be run first.
-This can be used to load the required modules (like R, python, etc).}
+\item{setup_lines}{Optional vector of bash lines to run first, typically to
+load the required modules.}
 
-\item{max_array_size}{maximum number of array jobs to be submitted at once.
-It should be strictly less than the maximum number of jobs you are allowed
-to submit to \code{slurm} on your HPC. If the number of jobs is greater than
-\code{max_array_size}, they will be submitted in multiple batches. The
-submission of the next batch is automatically handled by \code{slurmworkflow}.}
+\item{max_array_size}{Maximum number of array jobs submitted at once. If the
+map is larger, the first array task writes a continuation for the next
+slice.}
+
+\item{array_throttle}{Optional positive whole number \code{k}: at most \code{k} array
+tasks run simultaneously. Appended as \verb{\%k} to every \code{array} option of the
+step, including continuations and \code{\link[=set_map_size]{set_map_size()}} overrides. Do not set
+\code{array} in \code{sbatch_opts} for a map step: it conflicts with the template.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
-This step template uses a syntax similar to the \code{base::Map} / \code{base::mapply}
-functions to run a function with a given set of arguments as a workflow step.
-You must make sure that all variables required by the function are passed to
-it either as one of its arguments or loaded later by the function itself.
+Run a function as a Slurm array using semantics similar to \code{base::Map()}.
+Large maps are split into sequential one-shot submissions. No environment is
+exported through sbatch; map offsets and totals are read from the resolved
+SWF submission.
 }
-\section{Step Template}{
+\section{Array tasks}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Each task maps its position \code{pos = data.map.offset + SLURM_ARRAY_TASK_ID}
+(0-based) to item \code{pos + 1}. A task fails, before doing any work, when the
+submission's \verb{data.map.*} entries are invalid or when the array does not
+cover exactly the expected slice (\code{0} to
+\code{min(max_array_size, total - offset) - 1}), for example after an override of
+\code{array} that is inconsistent with the map data.
+}
+
+\section{Step Templates}{
+
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

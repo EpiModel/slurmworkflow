@@ -1,0 +1,16 @@
+#!swf-v1
+repeat=1
+next=calib_step1
+opt.partition=epimodel,short-cpu,day-long-cpu,week-long-cpu,month-long-cpu
+opt.mail-type=FAIL
+opt.mail-user=user@example.edu
+opt.cpus-per-task=8
+opt.time=05:00:00
+opt.mem-per-cpu=5G
+opt.array=0-11
+data.map.n_items=32
+data.map.max_array_size=20
+data.map.offset=20
+data.map.total=32
+origin.step=calib_step2
+origin.job=4815391_0

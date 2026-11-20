@@ -1,424 +1,394 @@
 ---
-title: "slurmworkflow"
+title: "Building and controlling Slurm workflows"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{slurmworkflow}
+  %\VignetteIndexEntry{Building and controlling Slurm workflows}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
-The goal of slurmworkflow is to provide a way to run complex multi step
-computations on a [slurm](https://slurm.schedmd.com/) equipped HPC.
+`slurmworkflow` separates a workflow's **design** from a particular **run**. The
+design is a directory built in R. Each step has a number, a stable name, a
+resolved sbatch submission (`step.swf`), and an optional static successor. The
+bash-only engine runs this design on the high-performance computing (HPC)
+cluster. Runtime messages can change one decision without rewriting the design.
 
-Definitions:
+## Create a workflow
 
-- A *workflow* is a predefined set of computation steps.
-- A computation *step* is a call to
-  [`sbatch`](https://slurm.schedmd.com/sbatch.html) to be run on the HPC
-- A *workflow directory* is a directory containing all the code required to
-    run a full workflow on the HPC
-
-By default the steps are run sequentially. But slurmworkflow provides tools
-for changing the execution order. This allows conditional execution of the steps
-and loop like behavior.
-
-In this vignette we walk through the creation of a 4 steps workflow
-showcasing the main utilities provided by slurmworkflow.
-
-## Setup
-
-Any HPC using [slurm](https://slurm.schedmd.com/) as its workload manager should
-work with slurmworkflow.
-
-HPC tested:
-
-- [Emory's RSPH HPC](https://sph.emory.edu/research/labs/index.html) (in this
-  vignette)
-- [Washington's HYAK
-  HPC](https://environment.uw.edu/intranet/technology-resources/hyak-uw-hpc-high-performance-computing-program/)
-
-We highly recommend using [renv](https://rstudio.github.io/renv/index.html)
-when working with an HPC.
-
-## Creating a new workflow
-
-```{r, eval = FALSE}
+```{r create, eval = FALSE}
 library(slurmworkflow)
 
 wf <- create_workflow(
-  wf_name = "test_slurmworkflow",
+  wf_name = "analysis",
   default_sbatch_opts = list(
-    "partition" = "epimodel",
-    "mail-type" = "FAIL",
-    "mail-user" = "user@emory.edu"
+    partition = "compute",
+    account = "my_project",
+    `mail-type` = "FAIL",
+    `mail-user` = "user@example.edu"
   )
 )
 ```
 
-First we create a new workflow called "test_slurmworkflow" and store a summary
-of it in the `wf` object. The second argument specifies that by default each
-*step* should run on the "epimodel" partition and send a mail at
-"user@emory.edu" if the step fails.
+This creates `workflows/analysis/`, including the executable `swf` command,
+`swf.d/workflow.swf`, and `swf.d/sbatch_rules.swf`. A `partition` default is
+required. The options `dependency`, `job-name`, `output`, `parsable`, `export`,
+and `export-file` are managed by the engine and are refused in user option
+lists. The workflow name must match `^[A-Za-z][A-Za-z0-9._-]*$`.
 
-Calling `create_workflow()` result in the creation of the *workflow directory*:
-"workflows/test_slurmworkflow/" that contains the code to send to the HPC. A
-*workflow summary* is returned and stored in the `wf` variable. We'll use it to
-add elements to the workflow.
+When the defaults contain `mail-user`, the controller jobs also get it, with
+`mail-type=FAIL`: a controller that stops the workflow after a failed step
+fails itself, and Slurm mails you (see [Failed steps](#failed-steps)).
 
-## Adding a step to the workflow
+The `opt.*` entries of `workflow.swf` are **builder defaults**: they are merged
+into each step when it is added. Editing them afterwards changes nothing at run
+time. Only the `ctrl.opt.*` entries (options of the controller jobs) are read
+when the workflow runs.
 
-The first step that we use on most of our *workflows* ensures that our local
-project and the HPC are in sync.
+## Add named steps
 
-```{r, eval = FALSE}
+The first step runs bash setup commands:
+
+```{r setup-step, eval = FALSE}
 wf <- add_workflow_step(
-  wf_summary = wf,
-  step_tmpl = step_tmpl_bash_lines(c(
-    "git pull",
-    ". /projects/epimodel/spack/share/spack/setup-env.sh",
-    "spack load r@4.2.1",
-    "Rscript -e \"renv::init(bare = TRUE)\"",
-    "Rscript -e \"renv::restore()\""
+  wf,
+  step_tmpl_bash_lines(c(
+    "module load R/4.3.0",
+    "Rscript -e 'renv::restore()'"
   )),
-  sbatch_opts = list(
-    "mem" = "16G",
-    "cpus-per-task" = 4,
-    "time" = 120
-  )
+  sbatch_opts = list(mem = "16G", `cpus-per-task` = 4, time = 120),
+  step_name = "setup"
 )
 ```
 
-The `add_workflow_step()` functions takes three arguments:
+The next step sources an R script with variables made available by the template:
 
-- `wf_summary`: the object we made with `create_workflow()`, indicating onto
-  which workflow we want to add a step.
-- `step_tmpl`: a *step template*, a helper function defining what to run on the
-  HPC (more on this latter).
-- `sbatch_opts`: arguments to be passed to `sbatch`. Here we specify that we
-  want 16GB of RAM, 4 CPUs and that the job should not take more than 120
-  minutes. The default options defined in `create_workflow()` will also be used.
-
-The *step template* we are using here, `step_tmpl_bash_lines()` takes a vector
-of `bash` lines to be run by `sbatch` on the HPC.
-
-Here we tell the step to:
-1. run `git pull`
-2. load our own version of [spack](https://spack.readthedocs.io/en/latest/) and
-   load the `R@4.2.1` module
-3. ensure that `renv` is initialized on the project (no effect if its already
-   the case)
-4. update the packages to match the *renv.lock* file
-
-## Running R Code directly
-
-As we usually want to run `R` code and not `bash`, slurmworkflow provides *step
-templates* simplifying this process.
-
-On HPCs, `R` is usually not available directly. On RSPH HPC we use spack to
-manage our modules. Therefore, we store the lines used to setup `R` on the HPC
-in a variable as it will be used by all `R` *step templates*.
-
-```{r, eval = FALSE}
-setup_lines <- c(
-  ". /projects/epimodel/spack/share/spack/setup-env.sh",
-  "spack load r@4.2.1"
+```{r fit-step, eval = FALSE}
+wf <- add_workflow_step(
+  wf,
+  step_tmpl_do_call_script(
+    r_script = "R/fit.R",
+    args = list(n_sims = 100, seed = 42),
+    setup_lines = "module load R/4.3.0"
+  ),
+  sbatch_opts = list(`mem-per-cpu` = "4G", time = "04:00:00"),
+  step_name = "fit"
 )
 ```
 
-### Run code from an R script
+Unlike `step_tmpl_rscript()`, `step_tmpl_do_call_script()` does not embed the
+contents of the script. Its path must therefore be valid on the HPC.
+`step_tmpl_do_call()` similarly runs a serialized function with `do.call()`.
+Functions execute in a clean R session: all required data must be arguments or
+be loaded by the function. A function defined in the global environment loses
+that environment when serialized; if it uses global objects,
+`step_tmpl_do_call()` and `step_tmpl_map()` warn at build time.
 
-Our next step will run the following script on the HPC.
+### Step names and successors
 
-```{r, eval = FALSE}
-# filename: R/01-test_do_call.R
-cat(paste0("var1 = ", var1, ", var2 = ", var2))
+Steps live under `swf.d/steps/<N>_<name>/`, where `N` runs from one to the number
+of steps, without gaps. A name must match `^[A-Za-z][A-Za-z0-9_-]*$`, have at
+most 64 characters, and be unique; `step_<N>` is the default. The directory is
+the canonical record of the name. Numbers are positions in build order, not
+identities: prefer names everywhere. `add_workflow_step()` refuses a workflow
+whose step directories are not numbered exactly `1..N` (for example after a
+step directory was deleted by hand).
 
-if (!file.exists("did_run")) {
-  file.create("did_run")
-  current_step <- slurmworkflow::get_current_workflow_step()
-  slurmworkflow::change_next_workflow_step(current_step)
-} else {
-  file.remove("did_run")
+By default, a step is followed by the next one in build order. Use `next_step`
+to make a branch or loop explicit:
+
+```{r static-next, eval = FALSE}
+wf <- add_workflow_step(
+  wf,
+  step_tmpl_rscript("R/check.R", setup_lines = "module load R/4.3.0"),
+  step_name = "check",
+  next_step = "fit" # Static loop until a runtime message overrides it
+)
+
+wf <- add_workflow_step(
+  wf,
+  step_tmpl_bash_lines("Rscript R/report.R"),
+  step_name = "report",
+  next_step = NA # End the run after this step
+)
+```
+
+A numeric `next_step` must refer to a step that already exists and is converted
+to its name. A character name only has to be valid syntactically, so it may name
+a step added later. Both `NA` and `""` explicitly end the workflow; `NULL`
+leaves `next` absent and uses build order.
+
+### Failed steps
+
+**A failed step stops the workflow unless `on_failure = "continue"`.** A step
+fails when any of its jobs or array tasks exits with a non-zero status, is
+killed (time limit, `scancel`), or cannot start. The controller that runs after
+it then submits nothing: it records
+`event=error reason=step_failed:<N>_<name>` in the run history, `swf status`
+prints `Workflow stopped on error: ...`, and the controller job itself fails
+(Slurm mails you when `mail-user` is set). Guards such as a `stop()` in an R
+step therefore stop the whole run.
+
+For a step whose failures must not stop the run, for example a map where some
+tasks may fail, set `on_failure = "continue"`:
+
+```{r on-failure, eval = FALSE}
+wf <- add_workflow_step(
+  wf,
+  step_tmpl_map(fit_one, scenario = 1:100),
+  step_name = "fit_all",
+  on_failure = "continue"
+)
+```
+
+The failures are still recorded in the run's `failed/` directory and listed by
+`swf status`, and the next step runs. `step.swf` stores `on_failure=continue`;
+the default (`stop`) is not written.
+
+## Map over arguments
+
+`step_tmpl_map()` and `step_tmpl_map_script()` create one Slurm array element
+per iterator element:
+
+```{r map-step, eval = FALSE}
+wf <- add_workflow_step(
+  wf,
+  step_tmpl_map_script(
+    "R/simulate.R",
+    scenario = 1:10000,
+    MoreArgs = list(n_reps = 32, n_cores = 8),
+    max_array_size = 500,
+    array_throttle = 100,
+    setup_lines = "module load R/4.3.0"
+  ),
+  sbatch_opts = list(`mem-per-cpu` = "4G", `cpus-per-task` = 8),
+  step_name = "simulate"
+)
+```
+
+All iterators must have the same non-zero length. `MoreArgs` supplies fixed
+arguments. The initial `step.swf` records an array from zero to the slice size
+minus one and these data entries:
+
+- `data.map.n_items`: the immutable number of items in `map.rds`;
+- `data.map.max_array_size`: the finite per-submission limit;
+- `data.map.offset`: the number of items handled by earlier slices;
+- `data.map.total`: the number of items enabled for this map execution.
+
+Task `SLURM_ARRAY_TASK_ID` handles the 0-based position
+`pos = data.map.offset + SLURM_ARRAY_TASK_ID`, that is item `pos + 1` of the
+iterators. `array_throttle = k` appends `%k` to the array: at most `k` tasks run
+at the same time.
+
+When there are more items than `max_array_size`, array task zero writes a
+one-shot continuation with `repeat = TRUE`. It advances `data.map.offset` and
+preserves the array throttle (`%k`). Consequently, a dynamic next message
+written by `FUN` is honoured only after the last slice, not between slices.
+Slices of one wave inherit the wave's override: each continuation is built
+from the submission of the slice that wrote it.
+
+Before calling `FUN`, every task validates the `data.map.*` entries of its
+submission and checks that the array covers exactly the expected slice (task
+IDs `0` to `min(max_array_size, total - offset) - 1`). On a mismatch, for
+example an `array` override that does not match `data.map.total`, every task
+fails with a message giving both sizes, the array, and the submission file.
+Use `set_map_size()` rather than overriding `array` directly. Do not set `array`
+in the `sbatch_opts` of a map step: the template sets it, and a different value
+is an error.
+
+No sbatch `--export` option is used for this bookkeeping. Array tasks read the
+exact resolved file identified by `SWF_SUBMISSION`.
+
+## sbatch option resolution
+
+Workflow defaults, options supplied to `add_workflow_step()`, and template
+options are merged in that order. For example, setting `mem = "16G"` by default
+and `mem-per-cpu = "4G"` on a step removes `mem` from that step. Giving two
+members of one exclusive group in the same update is an error.
+
+The result is written to `step.swf` as `opt.<option>=<value>`. The controller
+turns each entry into one sbatch argument; values with spaces, quotes, `$`, `*`,
+`%`, `#`, or `=` are not shell-expanded or re-split. Values must be single
+character strings or numbers: logical values, factors, lists, dates, empty
+strings, and duplicate option names are refused with the option's name.
+
+## Start, inspect, and stop a run
+
+Copy the full workflow directory to the cluster. The engine needs bash 4.2 or
+later at `/bin/bash` (any Linux cluster). If `swf` is not executable (workflow
+built on Windows, or copied without permissions), run
+`bash ./workflows/analysis/swf start` once: it restores the executable bit.
+From the project root:
+
+```{bash start, eval = FALSE}
+./workflows/analysis/swf start
+```
+
+Every `swf start` begins a new run, with a fresh run directory
+(`swf.d/run/<run_id>/`) and log directory (`log/<run_id>/`). Starting again at a
+later step with `-s` is a new run too, not a resumption. `swf start` first runs
+`swf check`, which validates the step layout and every `.swf` file, and refuses
+to start a broken workflow. It reports the step it starts at, such as
+`swf: starting at step "fit" (2), controller job 123456`, on stderr, and prints
+only the run id on stdout.
+
+The working directory at `swf start` is inherited by jobs. Select another
+starting step by name or number with `-s`, or set the working directory with
+`-d`:
+
+```{bash start-options, eval = FALSE}
+./workflows/analysis/swf start -s fit -d ~/projects/my_project
+```
+
+The `swf` executable is the only command needed on the HPC:
+
+| Command | Purpose |
+|---|---|
+| `swf start` | Start a run; use `--force` to stop a live run first |
+| `swf stop` | Stop the current run and cancel its jobs |
+| `swf status` | Show the run, last submission, queue state, messages, and failures |
+| `swf log` | Print the path of the controller log |
+| `swf log -s <step>` | Print the log paths of the last submission of a step |
+| `swf steps` | List step numbers, names, and static successors |
+| `swf runs` | List run identifiers |
+| `swf next <step>` | Set a one-shot runtime successor |
+| `swf override <step>` | Build a one-shot resolved submission override |
+| `swf check` | Validate the workflow files (also run by `swf start`) |
+
+`swf log` prints paths only, one per line, to pass to other commands:
+
+```bash
+less "$(swf log -s fit -t 0)"         # one array task
+tail -f "$(swf log)"                  # follow the controller
+swf log -s fit --all | xargs tail     # every submission of the step
+```
+
+It also accepts `-t`/`--task` for an array task, `-e`/`--element` for a map
+element (1-based, found in whichever slice ran it when `max_array_size` split
+the map), `-b`/`--back` to go back `n` submissions (with `--element`, `n` map
+executions), `-a`/`--all` for every submission of the step, and `-r`/`--run`
+for another run. Use `swf help` or `swf <command> --help` for complete options.
+
+Run-specific state is under `swf.d/run/<run_id>/`; logs are under
+`log/<run_id>/`. A failing job or array task leaves a marker in the run's
+`failed/` directory, and the workflow stops after that step unless the step has
+`on_failure = "continue"` (see [Failed steps](#failed-steps)).
+
+Job names and log paths are a public, stable format: step jobs are named
+`<wf>_<N>_<name>`, controllers `<wf>_ctrl`, and step logs are
+`log/<run_id>/<N>_<name>_<job>_<task>.out`. Each step log starts with the node
+and the CPUs the job got, such as `swf: job 123456_4 on node n042 with 8 cpu(s)`,
+and ends with the time used by the payload, as `system.time()` reports it:
+`swf: payload exited 0 after 1h02m03s elapsed, 7h41m12s user, 0m52s system (8 cpu(s), 93% used)`.
+The CPU times cover the payload and the processes it waited for; the last
+figure is `(user + system) / (elapsed * cpus)`. A payload stopped by a signal
+(time limit, `scancel`) reports its elapsed time only.
+
+### The job environment
+
+Jobs are submitted with `--export=NONE`: a step starts from a bare environment,
+not from the shell that ran `swf start`. Load modules and set paths in the step
+(`setup_lines`). The engine sets `SWF_ROOT`, `SWF_NAME`, `SWF_RUN_ID`,
+`SWF_RUN_DIR`, `SWF_LOG_DIR`, `SWF_CMD`, `SWF_CUR`, `SWF_CUR_NAME`, and
+`SWF_SUBMISSION`. Keep state that belongs to one run (counters, flags,
+intermediate files) in `$SWF_RUN_DIR`: a new run starts with an empty one.
+
+## Dynamic control flow
+
+A payload can change its successor from either bash or R:
+
+```{r dynamic-next, eval = FALSE}
+if (!converged) {
+  slurmworkflow::change_next_workflow_step("fit")
 }
 ```
 
-This very simple script prints the content of `var1` and `var2` to the
-standard output. Note that these variables are never declared in the script. We
-will pass them as arguments to the *step template*.
+The R function calls `swf next`. Supplying `sbatch_opts` also calls
+`swf override` for the selected step:
 
-The second part checks for the existence of a file called "did_run". If it does
-not exist yet, it's created and we instruct slurmworkflow to change the *next
-step* to the current step. This is how you make a loop in slurmworkflow.
-
-If the file exists, which means that it's the second time this step is run, it
-removes it. In this case `change_next_workflow_step()` is not called and the
-workflow will just continue to the next *step*.
-
-Let's now see how we add this script as a workflow step.
-
-```{r, eval = FALSE}
-wf <- add_workflow_step(
-  wf_summary = wf,
-  step_tmpl = step_tmpl_do_call_script(
-    r_script = "R/01-test_do_call.R",
-    args = list(var1 = "ABC", var2 = "DEF"),
-    setup_lines = setup_lines
-  ),
-  sbatch_opts = list(
-    "cpus-per-task" = 1,
-    "time" = "00:10:00",
-    "mem" = "4G"
-  )
+```{r dynamic-next-options, eval = FALSE}
+slurmworkflow::change_next_workflow_step(
+  "fit",
+  sbatch_opts = list(time = "08:00:00", `mem-per-cpu` = "8G")
 )
 ```
 
-As before we use the `add_workflow_step()` function. But we change the
-`step_tmpl` to use `step_tmpl_do_call_script()` with 3 arguments:
+Inside an R payload, these helpers expose the current execution context:
 
-- `r_script`: the path to the script to be run. Here "R/01-test_do_call.R". Note
-  that this path must be valid **on the HPC**.
-- `args`: a list of variables that will be available for the *step*. These are
-  the `var1` and `var2` that were missing from the script.
-- `setup_lines`: some bash code to be run before trying to source the script.
-  These are the lines used to load the R module we defined earlier.
-
-For the `sbatch` options, we ask here for 1 CPU, 4GB of RAM and a maximum of 10
-minutes.
-
-### Iterating over values in an R script
-
-One common task on an HPC is to run the same code many time and only vary the
-value of some arguments.
-
-On a typical R session `lapply()`, `Map()` and `Mapply()` are available for this
-purpose.
-
-slurmworkflow provides the `step_tmpl_map_script()` to run a script with a
-syntax similar to the `Map()` function. This create an array job where each
-element of input are processed in parallel.
-
-First let's take a look at the script to be run.
-
-```{r, eval = FALSE}
-# filename: R/02-test_map.R
-library(future.apply)
-plan(multicore, workers = ncores)
-
-future_lapply(seq_len(ncores), function(i) {
-  msg <- paste0(
-    "On core: ", i, "\n",
-    "iterator1: ", iterator1, "\n",
-    "iterator2: ", iterator2, "\n",
-    "var1 = ", var1, ", var2 = ", var2, "\n\n"
-  )
-  cat(msg)
-})
+```{r context, eval = FALSE}
+slurmworkflow::get_current_workflow_step()      # Number
+slurmworkflow::get_current_workflow_step_name() # Name
+slurmworkflow::get_workflow_submission()        # Named character vector
+slurmworkflow::get_workflow_root()              # Absolute workflow root on HPC
 ```
 
-This script needs 4 undeclared variables:
-- `iterator1` and `iterator2`: varying values
-- `ncores`, `var1` and `var2`: fixed values shared by all replications
+**DANGEROUS:** `change_next_workflow_step()`/`swf next` can skip work or create
+infinite loops. Make termination conditions explicit and test dynamic paths.
+Prefer a static `next_step` when the successor is known at build time, and name
+the target step: numbers are accepted, but they are positions, so never compute
+a target from `get_current_workflow_step()`. The last `next` written before the
+controller runs wins (a replacement is logged in the run history). A stopped
+run refuses messages.
 
-As before these values will be set by the *step template*.
+## One-shot overrides
 
-In this script we will print in parallel the message over `ncores`.
+Use `override_workflow_step()` or `swf override` to modify the next submission
+of a target step:
 
-Now for the addition of the step.
-
-```{r, eval = FALSE}
-cores_to_use <- 2
-
-wf <- add_workflow_step(
-  wf_summary = wf,
-  step_tmpl = step_tmpl_map_script(
-    r_script = "R/02-test_map.R",
-    # arguments passed to the script
-    iterator1 = seq_len(5),
-    iterator2 = seq_len(5) + 5,
-    MoreArgs = list(
-      ncores = cores_to_use,
-      var1 = "IJK",
-      var2 = "LMN"
-    ),
-    setup_lines = setup_lines,
-    max_array_size = 2
-  ),
-  sbatch_opts = list(
-    "cpus-per-task" = cores_to_use,
-    "time" = "00:10:00",
-    "mem-per-cpu" = "4G"
-  )
+```{r override, eval = FALSE}
+slurmworkflow::override_workflow_step(
+  "simulate",
+  sbatch_opts = list(time = "08:00:00"),
+  data = list(map.total = 20),
+  unset_opts = "mem-per-cpu"
 )
 ```
 
-The `step_tmpl_map_script()` takes an `r_script` argument similar to
-`step_tmpl_do_call_script()`. The next two arguments `iterator1` and `iterator2`
-will be iterated over using `sbatch` arrays. Each replication of the job will
-only have one value for each (1-6, 2-7, 3-8, 4-9 and 5-10). Similar to `Map()`,
-the `MoreArgs` argument defines variables to be shared across replication.
+**Overrides aggregate**: an override merges with a pending override of the
+same step (the last value of each key wins), otherwise with the step's
+`step.swf`. It applies to exactly one submission, then the step reverts to its
+saved defaults. `reset = TRUE` ignores the pending override instead. `from`
+selects a particular resolved submission as the merge base. `skip = TRUE`
+bypasses a submission; `repeat_step = TRUE` runs the target again immediately
+after it finishes. `on_failure = "continue"` (or `"stop"`) changes what a failure
+of that one submission does. Overriding a map step whose pending submission is
+a continuation keeps the continuation's slice unless `reset = TRUE`.
 
-A new argument `max_array_size` as been set to 2. This prevents the array jobs
-to be of size more than 2. In our case, we have submissions of array sizes 2, 2,
-and 1. In real analysis situation, the value would be around 500. This argument
-prevents [slurm](https://slurm.schedmd.com/) from refusing a job submission
-because of the size of the array (a limit of 1000 submission is common). *With
-EpiModel we already had cases where 30000 array jobs were to be run. This
-template simply submit them in sequential chunks of 500*
+**DANGEROUS:** these are deliberately low-level operations. Repetitions
+can loop forever and skips can omit necessary computation.
 
-In the `sbatch_opts` we specified `mem-per-cpu = "4G"`. This means that if we
-change the `cores_to_use` value, the memory asked will scale as well.
+For a map step, `set_map_size()` safely constructs the common size override:
 
-To recap, this step will submit an array of 5 jobs, each receiving a different
-value for `iterator1` and `iterator2`. Each of theses jobs will run over
-`cores_to_use`. We use this approach with
-[EpiModel](https://github.com/EpiModel/EpiModel) where we run huge arrays of
-jobs where each job is a set of around 30 parallel simulations. Therefore, we
-here have 2 levels of parallelization. One in
-[slurm](https://slurm.schedmd.com/) and one in the script itself.
+```{r resize, eval = FALSE}
+slurmworkflow::set_map_size("simulate", 100)
+```
 
-### Running an R function directly
+It preserves the array throttle and resets the map offset to zero. `n = 0`
+creates a skip override; `n` greater than `data.map.n_items` is rejected because
+the serialized payload has no such items.
 
-Sometimes we want to run a simple function directly without storing it into an
-R script. The `step_tmpl_do_call()` and `step_tmpl_map()` do exactly that for
-one-of functions and `Map()`s.
+## Custom step templates
 
-```{r, eval = FALSE}
-wf <- add_workflow_step(
-  wf_summary = wf,
-  step_tmpl = step_tmpl_do_call(
-    what = function(var1, var2) {
-      cat(paste0("var1 = ", var1, ", var2 = ", var2))
-    },
-    args = list(var1 = "XYZ", var2 = "UVW"),
-    setup_lines = setup_lines
-  ),
-  sbatch_opts = list(
-    "cpus-per-task" = 1,
-    "time" = "00:10:00",
-    "mem" = "4G",
-    "mail-type" = "END"
+A template receives the instruction path, template variables, the summary being
+built, and the current merged options:
+
+```{r custom-template, eval = FALSE}
+custom_tmpl <- function(instructions_script, wf_vars, wf_summary,
+                        sbatch_opts, ...) {
+  writeLines(c("module load R/4.3.0", "Rscript R/custom.R"),
+             instructions_script)
+  list(
+    sbatch_opts = list(time = 60),
+    data = list(custom.mode = "full")
   )
-)
+}
+
+wf <- add_workflow_step(wf, custom_tmpl, step_name = "custom")
 ```
 
-The syntax of these two templates is almost identical to the previous two that
-we discussed. The main difference the first argument where we pass a `function`
-instead of a path to a script.
+Templates may instead return `NULL` or `list()`. Their `data` names are flat and
+are prefixed with `data.` in `step.swf`. The `.swf` format is never sourced or
+evaluated; it is parsed as data by both engines.
 
-Note: the function will be run in clean `R` session on the HPC. All the values
-used by the `function` must be either created by it, loaded by it or passed as
-argument.
-
-Finally, as this will be our last step, we override the `mail-type`
-`sbatch_opts` to receive a mail when this *step* finishes, whatever the outcome.
-This way we receive a mail telling us that the *workflow* is finished.
-
-## Using the workflow on an HPC
-
-Now that our workflow is created how to actually run the code on the HPC?
-
-We assume that we are working on a project called "test_proj", that this
-project was cloned on the HPC at the following path: "~/projects/test_proj" and
-that the "~/projects/test_proj/workflows/" directory exists.
-
-### Sending the workflow to the HPC
-
-The following commands are to be run from your local computer.
-
-**MacOS or GNU/Linux**
-
-```
-# bash - local
-scp -r workflows/test_slurmworkflow <user>@clogin01.sph.emory.edu:projects/test_proj/workflows/
-```
-
-**Windows**
-
-```
-# bash - local
-set DISPLAY=
-scp -r workflows\test_slurmworkflow <user>@clogin01.sph.emory.edu:projects/test_proj/workflows/
-```
-
-Forgetting `set DISPLAY=` will prevent `scp` from working correctly if using the
-RStudio terminal.
-
-Note that it's `workflows\networks_estimation`. Windows uses back-slashes for
-directories and Unix OSes uses forward-slashes.
-
-#### Running the workflow from the HPC
-
-For this step, you must be at the command line on the HPC. This means that you
-have run: `ssh <user>@clogin01.sph.emory.edu` from your local computer.
-
-*run `set DISPLAY=` on Windows before if you get this error:
-`ssh_askpass: posix_spawnp: No such file or directory`*
-
-You also need to be at the root directory of the project (where the ".git"
-folder is as well as the "renv.lock" file". In this example you would get there
-by running `cd ~/projects/test_proj`. The following steps will not
-work if you are not at the root of your project.
-
-Running the *workflow* is done by **executing** the file
-"workflows/estimation/start_workflow.sh" with the following command:
-
-```
-# bash - hpc
-./workflows/test_slurmworkflow/start_workflow.sh
-```
-
-If you are using Windows, it may not be executable. You can solve it with the
-following command:
-
-```
-# bash - hpc
-chmod +x workflows/test_slurmworkflow/start_workflow.sh`
-```
-
-The workflow will not work if you *source* the file (with `source <script>` or
-`. <script>`).
-
-You can check the state of your running workflow as usual with `squeue -u <user>`.
-
-The logs for the workflows are in "workflows/test_slurmworkflow/log/".
-
-### The "start_workflow.sh" script
-
-This start script additionally allows you to start a workflow at a specific
-step with the `-s` argument.
-
-```
-# bash - hpc
-./workflows/test_slurmworkflow/start_workflow.sh -s 3
-```
-
-This will start the workflow at the 3rd step. Skipping steps 1 and 2.
-
-It is sometimes desirable to start the workflow from outside of the project it
-has to run on. The `-d` argument allows you to set a different working directory
-for the workflow.
-
-```
-# bash - hpc
-cd /
-~/projects/test_proj/workflows/test_slurmworkflow/start_workflow.sh -d ~/projects/test_proj
-```
-
-The previous block places us at the root of the file system with `cd /`. Then
-we call the "start_workflow.sh" script using its absolute path and we specify
-that the working directory for the workflow must be the root of the project.
-
-Remember that for `renv` to work, `R` must be called from the directory where
-the ".Rprofile" file is. It's the directory where you can also find the
-"renv.lock" file.
-
-## Conclusion
-
-slurmworkflow is a very low level package providing only basic building blocks
-for complex HPC computation.
-
-This package is used for [EpiModel](https://github.com/EpiModel/EpiModel)
-applied projects through higher level functions in
-[EpiModelHPC](https://github.com/EpiModel/EpiModelHPC/blob/main/vignettes/epimodelhiv-slurmworkflow.Rmd)
-and [swfcalib](https://github.com/EpiModel/swfcalib), an automated calibration
-system used for our models (WIP).
+The result is a portable workflow directory whose design can be inspected with
+`swf steps`, loaded back into R with `load_workflow()`, and controlled during an
+HPC run entirely through `swf`.

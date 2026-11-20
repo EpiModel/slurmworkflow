@@ -1,0 +1,70 @@
+#!/bin/bash
+set -e
+
+[[ -n "${FAKE_SLURM_DIR:-}" ]] || { printf 'squeue: error: FAKE_SLURM_DIR is required\n' >&2; exit 1; }
+# Test hooks: behave like squeue when slurmctld is unreachable, or when every
+# requested job id was purged (real Slurm exits 1 with "Invalid job id").
+if [[ "${FAKE_SLURM_SQUEUE_FAIL:-}" == 1 ]]; then
+  printf 'slurm_load_jobs error: Unable to contact slurm controller (connect failure)\n' >&2
+  exit 1
+fi
+if [[ "${FAKE_SLURM_SQUEUE_PURGED:-}" == 1 ]]; then
+  printf 'slurm_load_jobs error: Invalid job id specified\n' >&2
+  exit 1
+fi
+FORMAT='%i %T'
+FILTER=''
+while (( $# > 0 )); do
+  case "$1" in
+    -h) shift ;;
+    -j|--jobs) (( $# >= 2 )) || { printf 'squeue: error: -j requires ids\n' >&2; exit 1; }; FILTER="$2"; shift 2 ;;
+    -j*) FILTER="${1#-j}"; shift ;;
+    -o) (( $# >= 2 )) || { printf 'squeue: error: -o requires a format\n' >&2; exit 1; }; FORMAT="$2"; shift 2 ;;
+    -o*) FORMAT="${1#-o}"; shift ;;
+    --me) shift ;;
+    -u) (( $# >= 2 )) || exit 1; shift 2 ;;
+    *) printf 'squeue: error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
+  esac
+done
+
+declare -A WANTED=()
+if [[ -n "$FILTER" ]]; then
+  OLD_IFS="$IFS"; IFS=','; read -r -a FILTER_IDS <<< "$FILTER"; IFS="$OLD_IFS"
+  for ID in "${FILTER_IDS[@]}"; do WANTED[$ID]=1; done
+fi
+
+function task_cancelled {
+  local dir="$1" task="$2" line
+  [[ -f "$dir/cancelled_tasks" ]] || return 1
+  while IFS= read -r line; do [[ "$line" == "$task" ]] && return 0; done < "$dir/cancelled_tasks"
+  return 1
+}
+
+for DIR in "$FAKE_SLURM_DIR"/jobs/*/; do
+  [[ -d "$DIR" ]] || continue
+  DIR="${DIR%/}"
+  ID="${DIR##*/}"
+  [[ "$ID" =~ ^[0-9]+$ ]] || continue
+  STATE="$(< "$DIR/state")"
+  [[ "$STATE" == PENDING || "$STATE" == RUNNING ]] || continue
+  JOB_NAME="$(< "$DIR/job_name")"
+  TASKS="$(< "$DIR/array_tasks")"
+
+  if [[ -z "$TASKS" ]]; then
+    [[ ${#WANTED[@]} == 0 || ${WANTED[$ID]+present} ]] || continue
+    LINE="${FORMAT//%i/$ID}"
+    LINE="${LINE//%T/$STATE}"
+    LINE="${LINE//%j/$JOB_NAME}"
+    printf '%s\n' "$LINE"
+  else
+    for TASK in $TASKS; do
+      task_cancelled "$DIR" "$TASK" && continue
+      DISPLAY_ID="${ID}_${TASK}"
+      if [[ ${#WANTED[@]} > 0 && ! ${WANTED[$ID]+present} && ! ${WANTED[$DISPLAY_ID]+present} ]]; then continue; fi
+      LINE="${FORMAT//%i/$DISPLAY_ID}"
+      LINE="${LINE//%T/$STATE}"
+      LINE="${LINE//%j/$JOB_NAME}"
+      printf '%s\n' "$LINE"
+    done
+  fi
+done

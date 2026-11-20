@@ -1,0 +1,1056 @@
+#!/bin/bash
+# Refuse old bash first, with syntax that bash 3.2 (stock macOS) can parse.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) )); then
+  printf 'swf: bash >= 4.2 is required (found %s)\n' "${BASH_VERSION%%[!0-9.]*}" >&2
+  exit 2
+fi
+# The only user and payload entry point for a slurmworkflow workflow.
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  printf 'swf must be executed, not sourced.\n' >&2
+  return 1
+fi
+
+set -e
+
+SWF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && realpath .)"
+export SWF__DIR="$SWF_ROOT/swf.d"
+source "$SWF_ROOT/swf.d/lib.sh"
+
+# The start lock of `swf start` (B10), removed on exit with the run lock.
+SWF_START_LOCK=''
+function swf_exit {
+  swf_unlock
+  if [[ -n "$SWF_START_LOCK" ]]; then
+    rmdir "$SWF_START_LOCK" 2>/dev/null || true
+    SWF_START_LOCK=''
+  fi
+}
+SWF_EXIT_TRAP=swf_exit
+trap swf_exit EXIT
+
+declare -A MERGE_VALUES=()
+MERGE_KEYS=()
+
+function usage {
+  cat <<'EOF'
+usage: swf <command> [arguments]
+
+User commands:
+  start [-s <step>] [-d <dir>] [--force]  start a run
+  stop                                    stop the current run
+  status                                  show the current run
+  log [-s <step>] [-t <task>|-e <i>] [-b <n>|-a] [-r <run>]
+                                          print log paths
+  steps                                   list workflow steps
+  runs                                    list runs, newest last
+  check                                   validate the workflow files
+
+Message commands (the run comes from SWF_RUN_ID, then run/current.swf):
+  next <step>                             choose the next step, last writer wins
+  override <step> [--opt k=v]... [--unset-opt k]... [--data k=v]...
+           [--skip] [--repeat] [--on-failure stop|continue]
+           [--from <file>] [--reset]
+
+Steps are referred to by name; a number is accepted and resolved to the name
+of the step at that position (prefer names).
+
+Use "swf <command> --help" for command-specific syntax.
+EOF
+}
+
+function command_usage {
+  case "$1" in
+    start) printf 'usage: swf start [-s <name-or-number>] [-d <dir>] [--force]\n' ;;
+    stop) printf 'usage: swf stop\n' ;;
+    status) printf 'usage: swf status\n' ;;
+    log)
+      cat <<'EOF'
+usage: swf log [-s|--step <step>] [-t|--task <task> | -e|--element <i>]
+               [-b|--back <n> | -a|--all] [-r|--run <run-id>]
+
+Print log paths, one per line; nothing is read or followed. For example:
+  less "$(swf log -s fit -t 0)"    tail -f "$(swf log)"    swf log -s fit | xargs tail
+
+Without --step: the controller log of the run.
+  -s, --step     step name (or number): all task logs of its last submission
+  -t, --task     one array task of the selected submission(s)
+  -e, --element  map element i (1-based, as in R), in whichever slice ran it
+                 when max_array_size split the map
+  -b, --back     go back n submissions (0 = last, the default); with
+                 --element, n map executions
+  -a, --all      every submission of the step in the run
+  -r, --run      run id (default: the current run; see swf runs)
+EOF
+      ;;
+    steps) printf 'usage: swf steps\n' ;;
+    runs) printf 'usage: swf runs\n' ;;
+    check) printf 'usage: swf check\n\nValidate the step directories and the .swf files; exit 1 on any problem.\n' ;;
+    next) printf 'usage: swf next <step-name>\n' ;;
+    override)
+      cat <<'EOF'
+usage: swf override <step-name> [--opt k=v]... [--unset-opt k]... [--data k=v]...
+                    [--skip] [--repeat] [--on-failure stop|continue]
+                    [--from <file>] [--reset]
+
+The base is --from <file>, else the pending override of the step (overrides
+aggregate), else its step.swf. --reset ignores the pending override.
+When the pending override is a map continuation (repeat=1) and neither
+--reset nor --repeat is given, the result keeps repeat=1, opt.array and the
+data.map.* keys of the continuation; the other changes are merged.
+EOF
+      ;;
+    *) usage ;;
+  esac
+}
+
+function current_run {
+  local run_id="${SWF_RUN_ID:-}"
+  if [[ -z "$run_id" ]]; then
+    if [[ ! -f "$SWF_ROOT/swf.d/run/current.swf" ]]; then
+      swf_error 'no current run'
+      return 1
+    fi
+    swf_read "$SWF_ROOT/swf.d/run/current.swf" || return 1
+    run_id="${SWF_VALUES[id]:-}"
+  fi
+  if [[ -z "$run_id" || ! -d "$SWF_ROOT/swf.d/run/$run_id" ]]; then
+    swf_error "run not found: ${run_id:-<empty>}"
+    return 1
+  fi
+  # Messages to a stopped (or replaced) run would never be read.
+  local current_id='' stopped=0
+  if [[ -f "$SWF_ROOT/swf.d/run/current.swf" ]]; then
+    swf_read "$SWF_ROOT/swf.d/run/current.swf" || return 1
+    current_id="${SWF_VALUES[id]:-}"
+    [[ ! ${SWF_VALUES[stopped]+present} ]] || stopped=1
+  fi
+  if [[ "$current_id" != "$run_id" ]]; then
+    swf_error "run $run_id is stopped (it is not the current run)"
+    return 1
+  fi
+  if (( stopped )); then
+    swf_error "run $run_id is stopped"
+    return 1
+  fi
+  CMD_RUN_ID="$run_id"
+  CMD_RUN_DIR="$SWF_ROOT/swf.d/run/$run_id"
+}
+
+# Resolve a step reference for next/override: a name, or an all-digit number
+# resolved to the name of the step at that position (with a note).
+function resolve_message_target {
+  local reference="$1"
+  if ! swf_resolve_step "$SWF_ROOT" "$reference" number; then
+    swf_error "unknown step: $reference"
+    return 1
+  fi
+  if [[ "$reference" =~ ^[0-9]+$ ]]; then
+    printf 'swf: note: step %s is %s; prefer names\n' "$reference" "$STEP_NAME" >&2
+  fi
+}
+
+# Run squeue; set SQUEUE_OUT and SQUEUE_ERR. Returns squeue's status.
+function run_squeue {
+  local err_file status=0
+  err_file="$(mktemp "${TMPDIR:-/tmp}/swf-squeue.XXXXXX")" || return 1
+  SQUEUE_OUT="$(squeue "$@" 2> "$err_file")" || status=$?
+  SQUEUE_ERR="$(< "$err_file")"
+  rm -f "$err_file"
+  [[ -n "$SQUEUE_ERR" ]] || SQUEUE_ERR="squeue exited with status $status"
+  # Slurm purges finished jobs after MinJobAge; `squeue -j` then fails with
+  # "Invalid job id specified" when none of the ids is known: none is queued.
+  if (( status != 0 )) && [[ "$SQUEUE_ERR" == *'Invalid job id specified'* ]]; then
+    SQUEUE_OUT=''
+    return 0
+  fi
+  return "$status"
+}
+
+function collect_history_jobs {
+  local history="$1"
+  local line field id
+  HISTORY_CONTROLLERS=()
+  HISTORY_JOBS=()
+  HISTORY_ALL=()
+  local -A seen=()
+  if [[ -f "$history" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      for field in $line; do
+        case "$field" in
+          ctrl=*)
+            id="${field#ctrl=}"
+            [[ "$id" =~ ^[0-9]+$ ]] || continue
+            if [[ ! ${seen[ctrl:$id]+present} ]]; then
+              HISTORY_CONTROLLERS+=("$id")
+              HISTORY_ALL+=("$id")
+              seen[ctrl:$id]=1
+            fi
+            ;;
+          job=*)
+            id="${field#job=}"
+            [[ "$id" =~ ^[0-9]+$ ]] || continue
+            if [[ ! ${seen[job:$id]+present} ]]; then
+              HISTORY_JOBS+=("$id")
+              HISTORY_ALL+=("$id")
+              seen[job:$id]=1
+            fi
+            ;;
+          *) continue ;;
+        esac
+      done
+    done < "$history"
+  fi
+}
+
+function join_job_ids {
+  local joined=''
+  local id
+  for id in "$@"; do
+    if [[ -z "$joined" ]]; then joined="$id"; else joined="$joined,$id"; fi
+  done
+  JOINED_JOB_IDS="$joined"
+}
+
+function run_is_live {
+  local current="$SWF_ROOT/swf.d/run/current.swf"
+  [[ -f "$current" ]] || return 1
+  swf_read "$current" || return 1
+  [[ ! ${SWF_VALUES[stopped]+present} ]] || return 1
+  local run_id="${SWF_VALUES[id]:-}"
+  [[ -n "$run_id" ]] || return 1
+  local history="$SWF_ROOT/swf.d/run/$run_id/history"
+  # The controller that wrote event=end was the last job of the run.
+  if [[ -f "$history" ]] && [[ "$(tail -n 1 "$history")" == *' event=end '* ]]; then
+    return 1
+  fi
+  collect_history_jobs "$history"
+  (( ${#HISTORY_ALL[@]} > 0 )) || return 1
+  join_job_ids ${HISTORY_ALL[@]+"${HISTORY_ALL[@]}"}
+  # An unknown queue state counts as live: starting a second chain next to a
+  # live one would leave jobs that swf stop cannot cancel.
+  if ! run_squeue -h -j "$JOINED_JOB_IDS" -o %T; then
+    swf_error "cannot query the queue for run $run_id: $SQUEUE_ERR"
+    swf_error 'assuming the run is live; check with squeue, then use swf stop or swf start --force'
+    return 0
+  fi
+  [[ -n "$SQUEUE_OUT" ]]
+}
+
+function cmd_start {
+  local first_reference=1
+  local start_dir=''
+  local force=0
+  while (( $# > 0 )); do
+    case "$1" in
+      -s) (( $# >= 2 )) || { swf_error '-s requires a step'; return 2; }; first_reference="$2"; shift 2 ;;
+      -d) (( $# >= 2 )) || { swf_error '-d requires a directory'; return 2; }; start_dir="$2"; shift 2 ;;
+      --force) force=1; shift ;;
+      -h|--help) command_usage start; return 0 ;;
+      *) swf_error "unknown start argument: $1"; command_usage start >&2; return 2 ;;
+    esac
+  done
+
+  if [[ -n "$start_dir" ]]; then
+    cd "$start_dir" || exit 1
+  fi
+  # A workflow built on Windows or copied without permissions has a `swf`
+  # that is not executable (`bash swf start` still works): restore the bit.
+  [[ -x "$SWF_ROOT/swf" ]] || chmod +x "$SWF_ROOT/swf" 2>/dev/null || true
+  mkdir -p "$SWF_ROOT/swf.d/run"
+  if ! mkdir "$SWF_ROOT/swf.d/run/.start.lock" 2>/dev/null; then
+    swf_error "another swf start is running (remove $SWF_ROOT/swf.d/run/.start.lock if it is not)"
+    return 1
+  fi
+  SWF_START_LOCK="$SWF_ROOT/swf.d/run/.start.lock"
+
+  if ! command -v sbatch >/dev/null 2>&1; then
+    swf_error 'sbatch is not on PATH'
+    return 1
+  fi
+  fix_crlf_files "$SWF_ROOT"
+  if ! workflow_check; then
+    report_check_problems
+    swf_error 'not starting: fix the problems above (see swf check)'
+    return 1
+  fi
+  if ! swf_resolve_step "$SWF_ROOT" "$first_reference" number; then
+    swf_error "unknown first step: $first_reference"
+    return 1
+  fi
+  local first_id="$STEP_ID"
+  local first_name="$STEP_NAME"
+
+  if run_is_live; then
+    if (( force )); then
+      cmd_stop || swf_error 'swf start --force: continuing although some jobs could not be cancelled'
+    else
+      swf_error 'a run is still live; use swf stop or swf start --force'
+      return 1
+    fi
+  elif (( force )) && [[ -f "$SWF_ROOT/swf.d/run/current.swf" ]]; then
+    # Honour --force literally even if all jobs from the old run have finished.
+    cmd_stop || swf_error 'swf start --force: continuing although some jobs could not be cancelled'
+  fi
+
+  local run_id started run_dir log_dir current tmp
+  run_id="$(date '+%Y%m%d-%H%M%S')-$$"
+  started="$(swf_now)"
+  run_dir="$SWF_ROOT/swf.d/run/$run_id"
+  log_dir="$SWF_ROOT/log/$run_id"
+  if [[ -e "$run_dir" || -e "$log_dir" ]]; then
+    swf_error "run id already exists: $run_id"
+    return 1
+  fi
+
+  swf_read "$SWF_ROOT/swf.d/workflow.swf" || return 1
+  CTRL_ARGS=()
+  local key
+  for key in "${SWF_KEYS[@]}"; do
+    if [[ "$key" == ctrl.opt.* ]]; then
+      CTRL_ARGS+=("--${key#ctrl.opt.}=${SWF_VALUES[$key]}")
+    fi
+  done
+
+  mkdir -p "$run_dir/msg/override" "$run_dir/used" "$run_dir/failed" "$log_dir"
+  : > "$run_dir/history"
+
+  local command_args=(sbatch --parsable "--output=$log_dir/controller.out" \
+    "--job-name=${SWF_ROOT##*/}_ctrl")
+  command_args+=(${CTRL_ARGS[@]+"${CTRL_ARGS[@]}"})
+  command_args+=("$SWF_ROOT/swf.d/controller.sh" "$SWF_ROOT" "$run_id" first "$first_id")
+
+  # The run exists only once its first controller is accepted: on failure,
+  # remove its directories and leave the previous current.swf untouched.
+  local ctrl_id
+  if ! ctrl_id="$("${command_args[@]}")"; then
+    rm -rf "$run_dir" "$log_dir"
+    swf_error 'could not submit the first controller; no run was started'
+    return 1
+  fi
+  ctrl_id="${ctrl_id%%;*}"
+  if [[ ! "$ctrl_id" =~ ^[0-9]+$ ]]; then
+    rm -rf "$run_dir" "$log_dir"
+    swf_error "invalid job id returned by sbatch: $ctrl_id; no run was started"
+    return 1
+  fi
+
+  current="$SWF_ROOT/swf.d/run/current.swf"
+  tmp="$SWF_ROOT/swf.d/run/.current.swf.tmp.$$"
+  {
+    printf '#!swf-v1\n'
+    printf 'id=%s\nstarted=%s\nfirst_step=%s\nworkdir=%s\n' \
+      "$run_id" "$started" "$first_name" "$PWD"
+  } > "$tmp"
+  mv "$tmp" "$current"
+  swf_history "$run_dir" start "first=$first_id" "ctrl=$ctrl_id"
+  # On stderr, so that `$(swf start)` still captures only the run id.
+  printf 'swf: starting at step "%s" (%s), controller job %s\n' \
+    "$first_name" "${first_id%%_*}" "$ctrl_id" >&2
+  printf '%s\n' "$run_id"
+}
+
+function cmd_stop {
+  if (( $# > 0 )); then
+    case "$1" in -h|--help) command_usage stop; return 0 ;; esac
+    swf_error 'stop takes no arguments'
+    return 2
+  fi
+  local current="$SWF_ROOT/swf.d/run/current.swf"
+  if [[ ! -f "$current" ]]; then
+    swf_error 'no current run'
+    return 1
+  fi
+  swf_read "$current" || return 1
+  local run_id="${SWF_VALUES[id]:-}"
+  if [[ -z "$run_id" || ! -d "$SWF_ROOT/swf.d/run/$run_id" ]]; then
+    swf_error 'current run is invalid'
+    return 1
+  fi
+  if [[ ${SWF_VALUES[stopped]+present} ]]; then
+    return 0
+  fi
+  local stop_time run_dir id cancelled
+  stop_time="$(swf_now)"
+  run_dir="$SWF_ROOT/swf.d/run/$run_id"
+  swf_atomic_write_current "$current" "$stop_time" || return 1
+
+  collect_history_jobs "$run_dir/history"
+  cancelled=''
+  local err failed_ids=''
+  # scancel exits 0 (with a warning) for jobs that already finished; a
+  # non-zero exit means some jobs may still be queued or running.
+  if (( ${#HISTORY_CONTROLLERS[@]} > 0 )); then
+    if ! err="$(scancel "${HISTORY_CONTROLLERS[@]}" 2>&1 >/dev/null)"; then
+      join_job_ids "${HISTORY_CONTROLLERS[@]}"
+      failed_ids="$JOINED_JOB_IDS"
+      swf_error "scancel failed for controllers $JOINED_JOB_IDS: ${err:-no message}"
+    fi
+  fi
+  if (( ${#HISTORY_JOBS[@]} > 0 )); then
+    if ! err="$(scancel "${HISTORY_JOBS[@]}" 2>&1 >/dev/null)"; then
+      join_job_ids "${HISTORY_JOBS[@]}"
+      failed_ids="${failed_ids:+$failed_ids,}$JOINED_JOB_IDS"
+      swf_error "scancel failed for jobs $JOINED_JOB_IDS: ${err:-no message}"
+    fi
+  fi
+  for id in ${HISTORY_CONTROLLERS[@]+"${HISTORY_CONTROLLERS[@]}"} ${HISTORY_JOBS[@]+"${HISTORY_JOBS[@]}"}; do
+    if [[ -z "$cancelled" ]]; then cancelled="$id"; else cancelled="$cancelled,$id"; fi
+  done
+  if [[ -n "$failed_ids" ]]; then
+    swf_history "$run_dir" stop "cancelled=$cancelled" "cancel_failed=$failed_ids"
+    swf_error "run $run_id is marked stopped, but some of $failed_ids may still run; check with squeue and scancel them"
+    return 1
+  fi
+  swf_history "$run_dir" stop "cancelled=$cancelled"
+}
+
+function cmd_status {
+  if (( $# > 0 )); then
+    case "$1" in -h|--help) command_usage status; return 0 ;; esac
+    swf_error 'status takes no arguments'
+    return 2
+  fi
+  local current="$SWF_ROOT/swf.d/run/current.swf"
+  if [[ ! -f "$current" ]]; then
+    swf_error 'no current run'
+    return 1
+  fi
+  swf_read "$current" || return 1
+  local run_id="${SWF_VALUES[id]:-}"
+  local run_dir="$SWF_ROOT/swf.d/run/$run_id"
+  printf 'Run: %s\nStarted: %s\nStopped: %s\nWorkdir: %s\n' \
+    "$run_id" "${SWF_VALUES[started]:--}" "${SWF_VALUES[stopped]:--}" "${SWF_VALUES[workdir]:--}"
+
+  local line field last_step='' last_job='' state count
+  if [[ -f "$run_dir/history" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ "$line" == *' event=submit '* || "$line" == *' event=submit' ]] || continue
+      local this_step='' this_job=''
+      for field in $line; do
+        case "$field" in step=*) this_step="${field#step=}" ;; job=*) this_job="${field#job=}" ;; esac
+      done
+      if [[ -n "$this_job" ]]; then last_step="$this_step"; last_job="$this_job"; fi
+    done < "$run_dir/history"
+  fi
+  if [[ -n "$last_job" ]]; then
+    printf 'Last submission: step=%s job=%s\n' "$last_step" "$last_job"
+    local queue
+    if ! run_squeue -h -j "$last_job" -o %T; then
+      printf 'Queue: unknown: %s\n' "$SQUEUE_ERR"
+      queue=''
+    elif [[ -z "$SQUEUE_OUT" ]]; then
+      printf 'Queue: not in queue\n'
+    else
+      queue="$SQUEUE_OUT"
+      local -A states=()
+      while IFS= read -r state; do
+        [[ -n "$state" ]] || continue
+        states[$state]=$(( ${states[$state]:-0} + 1 ))
+      done <<< "$queue"
+      printf 'Queue:'
+      for state in "${!states[@]}"; do printf ' %s=%s' "$state" "${states[$state]}"; done
+      printf '\n'
+    fi
+  else
+    printf 'Last submission: -\nQueue: not in queue\n'
+  fi
+
+  printf 'Pending messages:'
+  local file pending=0
+  if [[ -f "$run_dir/msg/next.swf" ]]; then printf '\n  next.swf'; pending=1; fi
+  for file in "$run_dir"/msg/override/*.swf; do
+    [[ -f "$file" ]] || continue
+    printf '\n  override/%s' "${file##*/}"
+    pending=1
+  done
+  (( pending )) || printf ' -'
+  printf '\n'
+
+  local -a failures=()
+  for file in "$run_dir"/failed/*; do
+    [[ -f "$file" ]] || continue
+    failures+=("${file##*/}")
+  done
+  printf 'Failed jobs (%s):' "${#failures[@]}"
+  if (( ${#failures[@]} > 0 )); then printf ' %s' "${failures[@]}"; else printf ' -'; fi
+  printf '\n'
+  print_error_line "$run_dir/history"
+  printf 'Last history:\n'
+  if [[ -f "$run_dir/history" ]]; then tail -n 5 "$run_dir/history"; fi
+}
+
+# When the run's last event (swf stop aside) is an error, print it:
+#   Workflow stopped on error: step_failed:3_work (failed=2)
+function print_error_line {
+  local history="$1" line field event='' last=''
+  [[ -f "$history" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    event=''
+    for field in $line; do
+      case "$field" in event=*) event="${field#event=}" ;; esac
+    done
+    [[ -z "$event" || "$event" == stop ]] && continue
+    last="$line"
+  done < "$history"
+  [[ "$last" == *' event=error '* || "$last" == *' event=error' ]] || return 0
+  local reason='' extra=''
+  for field in $last; do
+    case "$field" in
+      time=*|event=*|by=*) ;;
+      reason=*) reason="${field#reason=}" ;;
+      *) extra="${extra:+$extra }$field" ;;
+    esac
+  done
+  printf 'Workflow stopped on error: %s' "${reason:-unknown}"
+  [[ -z "$extra" ]] || printf ' (%s)' "$extra"
+  printf '\n'
+}
+
+# Classify one entry of swf.d/steps. Sets ENTRY_NUMBER, ENTRY_NAME and
+# ENTRY_PROBLEM (empty for a well-formed step directory).
+function classify_step_entry {
+  local path="$1" base
+  base="${path##*/}"
+  ENTRY_NUMBER=''
+  ENTRY_NAME=''
+  ENTRY_PROBLEM=''
+  if [[ ! -d "$path" ]]; then
+    ENTRY_PROBLEM='not a directory'
+    return 1
+  fi
+  if [[ ! "$base" =~ ^([1-9][0-9]*)_([A-Za-z][A-Za-z0-9_-]*)$ ]]; then
+    ENTRY_PROBLEM='name is not <N>_<name> (N from 1, unpadded; name [A-Za-z][A-Za-z0-9_-]*)'
+    return 1
+  fi
+  ENTRY_NUMBER="${BASH_REMATCH[1]}"
+  ENTRY_NAME="${BASH_REMATCH[2]}"
+  if (( ${#ENTRY_NAME} > 64 )); then
+    ENTRY_PROBLEM='step name longer than 64 characters'
+    return 1
+  fi
+  if [[ ! -f "$path/step.swf" ]]; then
+    ENTRY_PROBLEM='missing step.swf'
+    return 1
+  fi
+  if [[ ! -f "$path/instructions.sh" ]]; then
+    ENTRY_PROBLEM='missing instructions.sh'
+    return 1
+  fi
+}
+
+function cmd_steps {
+  case "${1:-}" in -h|--help) command_usage steps; return 0 ;; esac
+  (( $# == 0 )) || { swf_error 'steps takes no arguments'; return 2; }
+  local path
+  for path in "$SWF_ROOT"/swf.d/steps/*; do
+    [[ -e "$path" ]] || continue
+    if ! classify_step_entry "$path"; then
+      printf 'invalid %s: %s\n' "${path##*/}" "$ENTRY_PROBLEM"
+      continue
+    fi
+    if ! swf_read "$path/step.swf" 2>/dev/null; then
+      printf 'invalid %s: %s\n' "${path##*/}" "$SWF_READ_ERROR"
+      continue
+    fi
+    printf '%s %s %s\n' "$ENTRY_NUMBER" "$ENTRY_NAME" "${SWF_VALUES[next]:--}"
+  done
+}
+
+# Validate the workflow layout and files (A11/A12). Fills CHECK_PROBLEMS and
+# CHECK_STEPS; returns 1 on any problem.
+CHECK_PROBLEMS=()
+CHECK_STEPS=0
+function workflow_check {
+  local root="$SWF_ROOT" path base problem rules_ok=1 n
+  local -A numbers=() names=() nexts=()
+  local -a step_files=()
+  CHECK_PROBLEMS=()
+  CHECK_STEPS=0
+
+  if [[ ! -f "$root/swf.d/workflow.swf" ]]; then
+    CHECK_PROBLEMS+=('swf.d/workflow.swf: missing')
+  elif ! swf_read "$root/swf.d/workflow.swf" 2>/dev/null; then
+    CHECK_PROBLEMS+=("$SWF_READ_ERROR")
+  fi
+  if [[ ! -f "$root/swf.d/sbatch_rules.swf" ]]; then
+    CHECK_PROBLEMS+=('swf.d/sbatch_rules.swf: missing')
+    rules_ok=0
+  elif ! swf_load_rules "$root" 2>/dev/null; then
+    CHECK_PROBLEMS+=("$SWF_READ_ERROR")
+    rules_ok=0
+  fi
+
+  if [[ ! -d "$root/swf.d/steps" ]]; then
+    CHECK_PROBLEMS+=('swf.d/steps: missing')
+  fi
+  for path in "$root"/swf.d/steps/*; do
+    [[ -e "$path" ]] || continue
+    base="${path##*/}"
+    if ! classify_step_entry "$path"; then
+      CHECK_PROBLEMS+=("steps/$base: $ENTRY_PROBLEM")
+      # Still account for the number and name of a well-named directory.
+      [[ -n "$ENTRY_NUMBER" ]] || continue
+    fi
+    if [[ ${numbers[$ENTRY_NUMBER]+present} ]]; then
+      CHECK_PROBLEMS+=("steps/$base: duplicate step number $ENTRY_NUMBER (also steps/${numbers[$ENTRY_NUMBER]})")
+    else
+      numbers[$ENTRY_NUMBER]="$base"
+    fi
+    if [[ ${names[$ENTRY_NAME]+present} ]]; then
+      CHECK_PROBLEMS+=("steps/$base: duplicate step name $ENTRY_NAME (also steps/${names[$ENTRY_NAME]})")
+    else
+      names[$ENTRY_NAME]="$base"
+    fi
+    [[ -f "$path/step.swf" ]] || continue
+    if ! swf_read "$path/step.swf" 2>/dev/null; then
+      CHECK_PROBLEMS+=("$SWF_READ_ERROR")
+      continue
+    fi
+    if [[ ${SWF_VALUES[next]+present} && -n "${SWF_VALUES[next]}" ]]; then
+      nexts[$base]="${SWF_VALUES[next]}"
+    fi
+    if (( rules_ok )) && ! swf_validate_keys; then
+      for problem in "${SWF_KEY_PROBLEMS[@]}"; do
+        CHECK_PROBLEMS+=("steps/$base/step.swf: $problem")
+      done
+    fi
+  done
+
+  CHECK_STEPS="${#numbers[@]}"
+  for (( n = 1; n <= CHECK_STEPS; n++ )); do
+    if [[ ! ${numbers[$n]+present} ]]; then
+      CHECK_PROBLEMS+=("steps: step numbers must be 1..$CHECK_STEPS without gaps; $n is missing")
+    fi
+  done
+  local next_value
+  for base in "${!nexts[@]}"; do
+    next_value="${nexts[$base]}"
+    if [[ ! "$next_value" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]] || [[ ! ${names[$next_value]+present} ]]; then
+      CHECK_PROBLEMS+=("steps/$base/step.swf: next='$next_value' is not a step name")
+    fi
+  done
+  (( ${#CHECK_PROBLEMS[@]} == 0 ))
+}
+
+function report_check_problems {
+  local problem
+  for problem in "${CHECK_PROBLEMS[@]}"; do
+    printf 'swf check: %s\n' "$problem" >&2
+  done
+}
+
+function cmd_check {
+  case "${1:-}" in -h|--help) command_usage check; return 0 ;; esac
+  (( $# == 0 )) || { swf_error 'check takes no arguments'; return 2; }
+  if ! workflow_check; then
+    report_check_problems
+    swf_error "${#CHECK_PROBLEMS[@]} problem(s) found"
+    return 1
+  fi
+  printf 'ok: %s steps\n' "$CHECK_STEPS"
+}
+
+function cmd_runs {
+  case "${1:-}" in -h|--help) command_usage runs; return 0 ;; esac
+  (( $# == 0 )) || { swf_error 'runs takes no arguments'; return 2; }
+  local current_id='' dir id marker
+  if [[ -f "$SWF_ROOT/swf.d/run/current.swf" ]]; then
+    swf_read "$SWF_ROOT/swf.d/run/current.swf" || return 1
+    current_id="${SWF_VALUES[id]:-}"
+  fi
+  for dir in "$SWF_ROOT"/swf.d/run/*/; do
+    [[ -d "$dir" ]] || continue
+    id="${dir%/}"; id="${id##*/}"
+    marker=''
+    [[ "$id" == "$current_id" ]] && marker=' (current)'
+    printf '%s%s\n' "$id" "$marker"
+  done
+}
+
+# Print log paths, one per line, for `less "$(swf log ...)"` or `| xargs ...`.
+function cmd_log {
+  local step='' task='' element='' back='' run_id='' all=0
+  while (( $# > 0 )); do
+    case "$1" in
+      --*=*) set -- "${1%%=*}" "${1#*=}" "${@:2}"; continue ;;
+    esac
+    case "$1" in
+      -s|--step|-t|--task|-e|--element|-b|--back|-r|--run)
+        (( $# >= 2 )) || { swf_error "$1 requires a value"; return 2; } ;;
+    esac
+    case "$1" in
+      -s|--step) step="$2"; shift 2 ;;
+      -t|--task) task="$2"; shift 2 ;;
+      -e|--element) element="$2"; shift 2 ;;
+      -b|--back) back="$2"; shift 2 ;;
+      -r|--run) run_id="$2"; shift 2 ;;
+      -a|--all) all=1; shift ;;
+      -h|--help) command_usage log; return 0 ;;
+      *) swf_error "unknown log argument: $1"; return 2 ;;
+    esac
+  done
+  [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { swf_error 'task must be a non-negative integer'; return 2; }
+  [[ -z "$element" || "$element" =~ ^[1-9][0-9]*$ ]] || { swf_error 'element must be a positive integer'; return 2; }
+  [[ -z "$back" || "$back" =~ ^[0-9]+$ ]] || { swf_error 'back must be a non-negative integer'; return 2; }
+  [[ -z "$task" || -z "$element" ]] || { swf_error '--task and --element are exclusive'; return 2; }
+  if (( all )) && [[ -n "$back$element" ]]; then
+    swf_error '--all excludes --back and --element'
+    return 2
+  fi
+  if [[ -z "$step" ]] && { [[ -n "$task$element$back" ]] || (( all )); }; then
+    swf_error '--task, --element, --back and --all require --step'
+    return 2
+  fi
+  back="${back:-0}"
+
+  if [[ -z "$run_id" ]]; then
+    swf_read "$SWF_ROOT/swf.d/run/current.swf" || return 1
+    run_id="${SWF_VALUES[id]:-}"
+  fi
+  local run_dir="$SWF_ROOT/swf.d/run/$run_id"
+  local log_dir="$SWF_ROOT/log/$run_id"
+  [[ -n "$run_id" && -d "$run_dir" ]] || { swf_error "run not found: $run_id"; return 1; }
+
+  if [[ -z "$step" ]]; then
+    [[ -f "$log_dir/controller.out" ]] || { swf_error 'controller log not found'; return 1; }
+    printf '%s\n' "$log_dir/controller.out"
+    return 0
+  fi
+
+  if ! swf_resolve_step "$SWF_ROOT" "$step" number; then
+    swf_error "unknown step: $step"
+    return 1
+  fi
+  local step_id="$STEP_ID"
+
+  # Submissions of the step in history order: job ids and source files.
+  local line field is_submit this_step this_job this_from
+  local -a jobs=() froms=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    is_submit=0 this_step='' this_job='' this_from=''
+    for field in $line; do
+      case "$field" in
+        event=submit) is_submit=1 ;;
+        step=*) this_step="${field#step=}" ;;
+        job=*) this_job="${field#job=}" ;;
+        from=*) this_from="${field#from=}" ;;
+      esac
+    done
+    if (( is_submit )) && [[ "$this_step" == "$step_id" && -n "$this_job" ]]; then
+      jobs+=("$this_job")
+      froms+=("$this_from")
+    fi
+  done < "$run_dir/history"
+  local count="${#jobs[@]}"
+  (( count > 0 )) || { swf_error "step has no submission in run $run_id: $step_id"; return 1; }
+
+  local file
+  if [[ -n "$element" ]]; then
+    # Walk back through the map slices. A slice with offset 0 starts a map
+    # execution; --back counts executions.
+    local pos=$((element - 1)) i offset='' total='' source execution=0 found=''
+    for (( i = count - 1; i >= 0; i-- )); do
+      source="${froms[i]}"
+      [[ "$source" == /* ]] || source="$SWF_ROOT/swf.d/$source"
+      swf_read "$source" || return 1
+      if [[ ! "${SWF_VALUES[data.map.offset]:-}" =~ ^[0-9]+$ ]]; then
+        swf_error "submission ${jobs[i]} of $step_id is not a map slice (use --task)"
+        return 1
+      fi
+      offset="${SWF_VALUES[data.map.offset]}"
+      if (( execution == back && offset <= pos )); then
+        found="$i"
+        total="${SWF_VALUES[data.map.total]:-}"
+        break
+      fi
+      if (( offset == 0 )); then
+        execution=$((execution + 1))
+        (( execution <= back )) || break
+      fi
+    done
+    if [[ -z "$found" ]]; then
+      if (( execution <= back )); then
+        swf_error "$step_id has $execution map execution(s) in run $run_id; --back $back is too far"
+      else
+        swf_error "element $element of $step_id was not submitted in that map execution"
+      fi
+      return 1
+    fi
+    if [[ "$total" =~ ^[0-9]+$ ]] && (( pos >= total )); then
+      swf_error "element $element is beyond the $total items of the map"
+      return 1
+    fi
+    file="$log_dir/${step_id}_${jobs[found]}_$((pos - offset)).out"
+    [[ -f "$file" ]] || { swf_error "log not found: $file"; return 1; }
+    printf '%s\n' "$file"
+    return 0
+  fi
+
+  local first=$((count - 1 - back)) last=$((count - 1)) name task_id printed=0
+  (( all )) && first=0
+  if (( first < 0 )); then
+    swf_error "$step_id has $count submission(s) in run $run_id; --back $back is too far"
+    return 1
+  fi
+  (( all )) || last="$first"
+  local -a by_task=()
+  for (( i = first; i <= last; i++ )); do
+    if [[ -n "$task" ]]; then
+      file="$log_dir/${step_id}_${jobs[i]}_${task}.out"
+      if [[ -f "$file" ]]; then
+        printf '%s\n' "$file"
+        printed=$((printed + 1))
+      fi
+      continue
+    fi
+    # A sparse indexed array lists the tasks in numeric order.
+    by_task=()
+    for file in "$log_dir/${step_id}_${jobs[i]}_"*.out; do
+      [[ -f "$file" ]] || continue
+      name="${file##*_}"
+      task_id="${name%.out}"
+      [[ "$task_id" =~ ^[0-9]+$ ]] || continue
+      by_task[10#$task_id]="$file"
+    done
+    if (( ${#by_task[@]} > 0 )); then
+      printf '%s\n' "${by_task[@]}"
+      printed=$((printed + ${#by_task[@]}))
+    fi
+  done
+  if (( printed == 0 )); then
+    if [[ -n "$task" ]]; then
+      swf_error "no log for task $task of $step_id"
+    else
+      swf_error "no log for $step_id"
+    fi
+    return 1
+  fi
+}
+
+function swf_merge_load {
+  local path="$1"
+  local key
+  swf_read "$path" || return 1
+  for key in "${SWF_KEYS[@]}"; do
+    case "$key" in skip|repeat|origin.step|origin.job) continue ;; esac
+    if [[ ! ${MERGE_VALUES[$key]+present} ]]; then MERGE_KEYS+=("$key"); fi
+    MERGE_VALUES[$key]="${SWF_VALUES[$key]}"
+  done
+}
+
+function swf_merge_unset {
+  local key="$1"
+  unset 'MERGE_VALUES[$key]'
+}
+
+function swf_merge_put {
+  local key="$1" value="$2" existing
+  for existing in "${MERGE_KEYS[@]}"; do
+    if [[ "$existing" == "$key" ]]; then
+      MERGE_VALUES[$key]="$value"
+      return 0
+    fi
+  done
+  MERGE_KEYS+=("$key")
+  MERGE_VALUES[$key]="$value"
+}
+
+function swf_merge_set_opt {
+  local option="$1" value="$2" key member
+  if [[ "$option" == --* || ! "$option" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    swf_error "invalid option name: $option"
+    return 1
+  fi
+  if ! swf_word_in_list "$option" "${RULE_VALUES[valid]:-}"; then
+    swf_error "invalid sbatch option: $option"
+    return 1
+  fi
+  if swf_word_in_list "$option" "${RULE_VALUES[reserved]:-}"; then
+    swf_error "reserved sbatch option: $option"
+    return 1
+  fi
+  for key in "${RULE_KEYS[@]}"; do
+    [[ "$key" == exclusive.* ]] || continue
+    if swf_word_in_list "$option" "${RULE_VALUES[$key]}"; then
+      for member in ${RULE_VALUES[$key]}; do
+        [[ "$member" == "$option" ]] || swf_merge_unset "opt.$member"
+      done
+    fi
+  done
+  swf_merge_put "opt.$option" "$value"
+}
+
+function swf_merge_write {
+  local path="$1" key base dir tmp
+  dir="${path%/*}"; base="${path##*/}"
+  tmp="$dir/.$base.tmp.$$"
+  {
+    printf '#!swf-v1\n'
+    for key in "${MERGE_KEYS[@]}"; do
+      [[ ${MERGE_VALUES[$key]+present} ]] || continue
+      printf '%s=%s\n' "$key" "${MERGE_VALUES[$key]}"
+    done
+  } > "$tmp" || return 1
+  mv "$tmp" "$path"
+}
+
+function cmd_next {
+  case "${1:-}" in -h|--help) command_usage next; return 0 ;; esac
+  (( $# == 1 )) || { swf_error 'next requires exactly one step name'; return 2; }
+  local step="$1"
+  resolve_message_target "$step" || return 1
+  step="$STEP_NAME"
+  current_run || return 1
+  swf_lock "$CMD_RUN_DIR" || return 1
+  local path="$CMD_RUN_DIR/msg/next.swf"
+  local tmp="$CMD_RUN_DIR/msg/.next.swf.tmp.$$"
+  # Last writer wins, but a replacement is recorded (B9).
+  if [[ -f "$path" ]] && swf_read "$path" 2>/dev/null && [[ ${SWF_VALUES[next]+present} ]]; then
+    local old="${SWF_VALUES[next]}"
+    if [[ "$old" != "$step" ]]; then
+      swf_history "$CMD_RUN_DIR" replace "old=$(swf_history_value "$old")" "new=$step" \
+        "by=$(swf_origin_job)"
+      printf 'swf: warning: replacing the pending next step %s with %s\n' "${old:-<end>}" "$step" >&2
+    fi
+  fi
+  {
+    printf '#!swf-v1\nnext=%s\norigin.step=%s\norigin.job=%s\n' \
+      "$step" "${SWF_CUR_NAME:-}" "$(swf_origin_job)"
+  } > "$tmp"
+  mv "$tmp" "$path"
+  swf_unlock
+  printf '%s\n' "$path"
+}
+
+function cmd_override {
+  case "${1:-}" in -h|--help) command_usage override; return 0 ;; esac
+  (( $# >= 1 )) || { swf_error 'override requires a step name'; return 2; }
+  local target="$1"
+  shift
+  resolve_message_target "$target" || return 1
+  local target_name="$STEP_NAME"
+  local default_file="$STEP_DIR/step.swf"
+
+  local -a option_changes=() data_changes=() unset_options=()
+  local from_file='' reset=0 skip=0 repeat=0 on_failure='' change value key
+  while (( $# > 0 )); do
+    case "$1" in
+      --opt|--data)
+        key="$1"
+        (( $# >= 2 )) || { swf_error "$key requires k=v"; return 2; }
+        change="$2"
+        [[ "$change" == *=* ]] || { swf_error "$key requires k=v"; return 2; }
+        if swf_value_has_newline "$change"; then swf_error 'newlines are not allowed in values'; return 1; fi
+        if [[ "$key" == --opt ]]; then option_changes+=("$change"); else data_changes+=("$change"); fi
+        shift 2
+        ;;
+      --unset-opt)
+        (( $# >= 2 )) || { swf_error '--unset-opt requires an option'; return 2; }
+        [[ ! "$2" == --* ]] || { swf_error 'option names do not start with --'; return 2; }
+        unset_options+=("$2"); shift 2
+        ;;
+      --skip) skip=1; shift ;;
+      --repeat) repeat=1; shift ;;
+      --reset) reset=1; shift ;;
+      --on-failure)
+        (( $# >= 2 )) || { swf_error '--on-failure requires stop or continue'; return 2; }
+        [[ "$2" == stop || "$2" == continue ]] || { swf_error "--on-failure must be stop or continue, not: $2"; return 2; }
+        on_failure="$2"; shift 2
+        ;;
+      --from) (( $# >= 2 )) || { swf_error '--from requires a file'; return 2; }; from_file="$2"; shift 2 ;;
+      --help|-h) command_usage override; return 0 ;;
+      *) swf_error "unknown override argument: $1"; return 2 ;;
+    esac
+  done
+
+  current_run || return 1
+  swf_lock "$CMD_RUN_DIR" || return 1
+  MERGE_KEYS=()
+  MERGE_VALUES=()
+  local base="$default_file"
+  local pending="$CMD_RUN_DIR/msg/override/$target_name.swf"
+  if [[ -n "$from_file" ]]; then
+    base="$from_file"
+  elif (( ! reset )) && [[ -f "$pending" ]]; then
+    base="$pending"
+  fi
+  swf_merge_load "$base" || return 1
+
+  # A5: a pending map continuation (repeat=1) keeps its slice.
+  local keep_slice=0
+  local -a slice_keys=()
+  local -A slice_values=()
+  if (( ! reset && ! repeat )) && [[ -f "$pending" ]]; then
+    swf_read "$pending" || return 1
+    if [[ "${SWF_VALUES[repeat]:-}" == 1 ]]; then
+      keep_slice=1
+      for key in "${SWF_KEYS[@]}"; do
+        case "$key" in
+          opt.array|data.map.*) slice_keys+=("$key"); slice_values[$key]="${SWF_VALUES[$key]}" ;;
+        esac
+      done
+    fi
+  fi
+
+  swf_load_rules "$SWF_ROOT" || return 1
+
+  for change in ${option_changes[@]+"${option_changes[@]}"}; do
+    key="${change%%=*}"; value="${change#*=}"
+    swf_merge_set_opt "$key" "$value" || return 1
+  done
+  for key in ${unset_options[@]+"${unset_options[@]}"}; do
+    swf_merge_unset "opt.$key"
+  done
+  for change in ${data_changes[@]+"${data_changes[@]}"}; do
+    key="${change%%=*}"; value="${change#*=}"
+    if [[ ! "$key" =~ ^[A-Za-z0-9_.-]+$ ]]; then swf_error "invalid data key: $key"; return 1; fi
+    swf_merge_put "data.$key" "$value"
+  done
+  if [[ -n "$on_failure" ]]; then swf_merge_put on_failure "$on_failure"; fi
+  if (( skip )); then swf_merge_put skip 1; fi
+  if (( repeat )); then swf_merge_put repeat 1; fi
+  if (( keep_slice )); then
+    local changed=0
+    for key in "${MERGE_KEYS[@]}"; do
+      case "$key" in
+        opt.array|data.map.*)
+          [[ ${MERGE_VALUES[$key]+present} ]] || continue
+          if [[ ! ${slice_values[$key]+present} || "${slice_values[$key]}" != "${MERGE_VALUES[$key]}" ]]; then changed=1; fi
+          swf_merge_unset "$key"
+          ;;
+      esac
+    done
+    for key in ${slice_keys[@]+"${slice_keys[@]}"}; do
+      swf_merge_put "$key" "${slice_values[$key]}"
+    done
+    swf_merge_put repeat 1
+    if (( changed )); then
+      printf 'swf: note: %s has a pending continuation (repeat=1); keeping its opt.array and data.map.* (use --reset to drop it)\n' "$target_name" >&2
+    fi
+  fi
+  swf_merge_put origin.step "${SWF_CUR_NAME:-}"
+  swf_merge_put origin.job "$(swf_origin_job)"
+
+  local output="$CMD_RUN_DIR/msg/override/$target_name.swf"
+  swf_merge_write "$output" || return 1
+  swf_unlock
+  printf '%s\n' "$output"
+}
+
+if (( $# == 0 )); then usage; exit 2; fi
+COMMAND="$1"
+shift
+case "$COMMAND" in
+  help|-h|--help) usage ;;
+  start) cmd_start "$@" ;;
+  stop) cmd_stop "$@" ;;
+  status) cmd_status "$@" ;;
+  steps) cmd_steps "$@" ;;
+  runs) cmd_runs "$@" ;;
+  log) cmd_log "$@" ;;
+  check) cmd_check "$@" ;;
+  next) cmd_next "$@" ;;
+  override) cmd_override "$@" ;;
+  *) swf_error "unknown command: $COMMAND"; usage >&2; exit 2 ;;
+esac

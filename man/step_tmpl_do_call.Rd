@@ -7,30 +7,30 @@
 step_tmpl_do_call(what, args, setup_lines = NULL)
 }
 \arguments{
-\item{what}{The R function to be run by the workflow step}
+\item{what}{The R function to be run by the workflow step.}
 
-\item{args}{a \emph{list} of arguments to the function call. The \code{names}
-attribute of \code{args} gives the argument names.}
+\item{args}{A list of arguments to the function call.}
 
-\item{setup_lines}{(optional) a vector of bash lines to be run first.
-This can be used to load the required modules (like R, python, etc).}
+\item{setup_lines}{Optional vector of bash lines to run first, typically to
+load the required modules.}
 }
 \value{
-a template function to be used by \code{add_workflow_step}
+A template function to be used by \code{add_workflow_step()}.
 }
 \description{
-This step template uses a syntax similar to the \code{base::do.call} function to
-run a function as a workflow step. You must make sure that all variables
-required by the function are passed to it either as one of its arguments or
-loaded later by the function itself.
+Serialize a function and arguments and run them with \code{do.call()} in a clean R
+session on the HPC. Every value required by the function must be passed as an
+argument or loaded by the function itself.
 }
-\section{Step Template}{
+\details{
+A function defined in the global environment is serialized without that
+environment: the objects it uses from there do not exist when the step runs.
+A warning names them when the function is created at build time (requires
+the \code{codetools} package).
+}
+\section{Step Templates}{
 
-Step Templates are helper functions to be used within \code{add_workflow_step}.
-Some basic ones are provided by the \code{slurmworkflow} package. They instruct
-the workflow to run either a bash script, a set of bash lines given as a
-character vector or an R script.
-Additional Step Templates can be created to simplify specific tasks. The
-easiest way to do so is as wrappers around existing templates.
+Step templates are function factories. The returned function writes the step
+payload and may return a list with \code{sbatch_opts} and \code{data} elements.
 }
 

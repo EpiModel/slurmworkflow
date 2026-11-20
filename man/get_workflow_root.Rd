@@ -7,15 +7,11 @@
 get_workflow_root(wf_summary = NULL)
 }
 \arguments{
-\item{wf_summary}{The workflow summary returned after it's creation or
-obtained with \code{swf_load_workflow}. If not provided, the function assumes
-that the workflow is running on an HPC and pulls the value using
-environment variables.}
+\item{wf_summary}{A workflow summary. If omitted, \code{SWF_ROOT} is used.}
 }
 \value{
-The path to the workflow root directory
+The path to the workflow root directory.
 }
 \description{
-This function will get the path to the root directory of a workflow. Either
-a local workflow or during the execution of a workflow on an HPC
+Get the Root Directory of a Workflow
 }

@@ -1,4 +1,4 @@
-# Helper functions to create the files and directory for the workflows
+# Helpers to create files and directories for workflows.
 
 #' @keywords internal
 #' @noRd
@@ -9,42 +9,19 @@ get_templates_dir <- function() fs::path_package("slurmworkflow", "templates")
 create_wf_dir <- function(wf_summary) {
   wf_root <- wf_summary[["root"]]
   if (fs::dir_exists(wf_root)) {
-    stop("The directory \"", wf_root, "\" already exists.")
+    stop("The directory \"", wf_root, "\" already exists.", call. = FALSE)
   }
   wf_tmpl_dir <- fs::path(get_templates_dir(), "workflow")
   fs::dir_copy(wf_tmpl_dir, wf_root)
-  start_workflow_path <- fs::path(wf_root, "start_workflow.sh")
-  fs::file_chmod(start_workflow_path, "+x")
-  create_ctrl_script(wf_summary)
-  write_summary(wf_summary)
+  fs::file_chmod(fs::path(wf_root, "swf"), "+x")
+  fs::dir_create(fs::path(wf_root, "swf.d", "steps"))
   invisible(wf_summary)
 }
 
 #' @keywords internal
 #' @noRd
-create_step_dir <- function(wf_summary, step_tmpl_fun) {
-  wf_vars <- make_wf_vars(wf_summary)
-  last_step_summary <- get_last_step_summary(wf_summary)
-  step_tmpl_dir <- fs::path(get_templates_dir(), "step_dir")
-  fs::dir_copy(step_tmpl_dir, wf_vars[["SWF__CUR_DIR"]])
-
-  tmpl_sbatch_opts <- step_tmpl_fun(
-    instructions_script = wf_vars[["SWF__INSTRUCTIONS_SCRIPT"]],
-    wf_summary = wf_summary,
-    wf_vars = wf_vars,
-    sbatch_opts = last_step_summary[["sbatch_opts"]]
-  )
-
-  if (is.list(tmpl_sbatch_opts) && length(tmpl_sbatch_opts) > 0) {
-    last_step_summary[["sbatch_opts"]] <- update_sbatch_opts(
-      last_step_summary[["sbatch_opts"]],
-      tmpl_sbatch_opts
-    )
-    wf_summary <- mutate_last_step_summary(wf_summary, last_step_summary)
-  }
-
-  create_job_script(wf_summary)
-  write_summary(wf_summary)
-  invisible(wf_summary)
+create_step_dir <- function(wf_summary) {
+  step_dir <- make_wf_vars(wf_summary)[["SWF__CUR_DIR"]]
+  fs::dir_create(step_dir)
+  step_dir
 }
-
