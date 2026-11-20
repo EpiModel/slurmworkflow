@@ -552,6 +552,32 @@ EOF
   assert_grep 'reason=step_failed:1_slow failed=1' "$WF/swf.d/run/$RUN_ID/history"
   assert_not_grep 'step=2_after' "$WF/swf.d/run/$RUN_ID/history"
   assert_grep 'received SIGTERM' "$WF/log/$RUN_ID/1_slow_${STEP_JOB}_4294967294.out"
+  assert_grep 'swf: payload killed by SIGTERM after ' "$WF/log/$RUN_ID/1_slow_${STEP_JOB}_4294967294.out"
+  assert_eq 0 "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'swf-times.*' -newer "$MARKER" 2>/dev/null | wc -l)" 'times file removed'
+}
+
+# The last log line reports elapsed, user and system time, like system.time.
+function test_payload_time {
+  case_init payload-time
+  new_workflow wf
+  write_step 1 busy
+  write_payload 1 busy <<'EOF'
+end=$((SECONDS + 1))
+while (( SECONDS < end )); do :; done
+exit 3
+EOF
+  start_workflow
+  run_scheduler
+  last_job_for_step 1_busy
+  local LOG="$WF/log/$RUN_ID/1_busy_${STEP_JOB}_4294967294.out" LAST
+  LAST="$(tail -n 1 "$LOG")"
+  [[ "$LAST" =~ ^swf:\ payload\ exited\ 3\ after\ ([0-9]+)\.[0-9]{3}s\ elapsed,\ ([0-9]+)\.[0-9]{3}s\ user,\ [0-9]+\.[0-9]{3}s\ system\ \(2\ cpu\(s\),\ ([0-9]+)%\ used\)$ ]] \
+    || fail "unexpected time line: $LAST"
+  (( BASH_REMATCH[1] >= 0 && BASH_REMATCH[1] <= 2 )) || fail "elapsed out of range: $LAST"
+  # A busy loop of up to 2 s burns user time: at least 0.3 s of it.
+  [[ "$LAST" =~ elapsed,\ ([0-9]+)\.([0-9]{3})s\ user ]]
+  (( 10#${BASH_REMATCH[1]}${BASH_REMATCH[2]} >= 300 )) || fail "user time too low: $LAST"
+  assert_grep 'reason=step_failed:1_busy' "$WF/swf.d/run/$RUN_ID/history"
 }
 
 function test_preflight_marker {
@@ -698,8 +724,12 @@ EOF
 
   # --element finds the slice of the last execution; --back counts executions.
   assert_eq "$LOGS/1_map_${MAP_JOBS[4]}_1.out" "$(must_capture "$WF/swf" log -s map -e 5)" 'element 5'
-  assert_eq "$(printf 'swf: job %s_1 on node fake-node with 2 cpu(s)\npos=4' "${MAP_JOBS[4]}")" \
-    "$(cat "$("$WF/swf" log -s map -e 5)")" 'element 5 log: node line, then payload'
+  local ELEMENT_LOG
+  mapfile -t ELEMENT_LOG < "$("$WF/swf" log -s map -e 5)"
+  assert_eq 3 "${#ELEMENT_LOG[@]}" 'element 5 log: node line, payload, time line'
+  assert_eq "swf: job ${MAP_JOBS[4]}_1 on node fake-node with 2 cpu(s)" "${ELEMENT_LOG[0]}" 'node line'
+  assert_eq 'pos=4' "${ELEMENT_LOG[1]}" 'payload output'
+  assert_contains "${ELEMENT_LOG[2]}" 'swf: payload exited 0 after ' 'time line'
   assert_eq "$LOGS/1_map_${MAP_JOBS[5]}_0.out" "$(must_capture "$WF/swf" log --step map --element 7)" 'element 7'
   assert_eq "$LOGS/1_map_${MAP_JOBS[3]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 0)" 'element 3'
   assert_eq "$LOGS/1_map_${MAP_JOBS[0]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 1)" 'element 3, previous execution'
@@ -1307,6 +1337,7 @@ run_test 'cyclic skip stops at loop bound' test_skip_loop_bound
 run_test 'first-step override and numeric/name selectors' test_first_step_override_and_selectors
 run_test 'override from/reset and .swf validation' test_from_reset_and_parser
 run_test 'TERM-killed payload writes marker 143 and stops the run' test_term_kill_marker
+run_test 'payload time line: exit code, elapsed, user, system' test_payload_time
 run_test 'pre-flight failures write a marker' test_preflight_marker
 run_test 'controller after mode takes the finished job id' test_controller_arguments
 run_test 'squeue failure keeps the run live; status survives it' test_squeue_failure
