@@ -277,11 +277,19 @@ Job names and log paths are a public, stable format: step jobs are named
 `<wf>_<N>_<name>`, controllers `<wf>_ctrl`, and step logs are
 `log/<run_id>/<N>_<name>_<job>_<task>.out`. Each step log starts with the node
 and the CPUs the job got, such as `swf: job 123456_4 on node n042 with 8 cpu(s)`,
-and ends with the time used by the payload, as `system.time()` reports it:
-`swf: payload exited 0 after 1h02m03s elapsed, 7h41m12s user, 0m52s system (8 cpu(s), 93% used)`.
-The CPU times cover the payload and the processes it waited for; the last
-figure is `(user + system) / (elapsed * cpus)`. A payload stopped by a signal
-(time limit, `scancel`) reports its elapsed time only.
+and ends with the exit code and the time used by the payload, as
+`system.time()` reports it:
+
+```
+swf: exit  elapsed   user      system  cpus  used
+swf: 0     1h02m03s  7h41m12s  0m52s   8     93%
+```
+
+The CPU times are summed over the payload and the processes it waited for
+(forks included), so with parallel workers they exceed the elapsed time;
+`used` is `(user + system) / (elapsed * cpus)`. A payload stopped by a signal
+(time limit, `scancel`) shows the signal as its exit, its elapsed time, and `?`
+for the CPU times.
 
 ### The job environment
 

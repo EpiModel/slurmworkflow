@@ -38,9 +38,9 @@
   `max_array_size` slices (`-e`), earlier submissions (`-b`) or all of them
   (`-a`); every option has a long form (`--step`, `--task`, ...).
 - Each step log starts with the node and the number of CPUs of the job
-  (`SLURMD_NODENAME`, `SLURM_CPUS_ON_NODE`), and ends with the payload's exit
-  code and time used, like `system.time()`: elapsed, user, system, and the
-  share of the allocated CPUs used.
+  (`SLURMD_NODENAME`, `SLURM_CPUS_ON_NODE`), and ends with a two-line table of
+  the payload's exit code and time used, like `system.time()`: elapsed, user,
+  system, CPUs, and the share of the allocated CPUs used.
 - `swf start` reports the step it starts at (name and number) on stderr; stdout
   is still only the run id.
 - Step directories are now `swf.d/steps/<N>_<name>/`. `add_workflow_step()` gained

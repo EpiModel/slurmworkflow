@@ -552,7 +552,9 @@ EOF
   assert_grep 'reason=step_failed:1_slow failed=1' "$WF/swf.d/run/$RUN_ID/history"
   assert_not_grep 'step=2_after' "$WF/swf.d/run/$RUN_ID/history"
   assert_grep 'received SIGTERM' "$WF/log/$RUN_ID/1_slow_${STEP_JOB}_4294967294.out"
-  assert_grep 'swf: payload killed by SIGTERM after ' "$WF/log/$RUN_ID/1_slow_${STEP_JOB}_4294967294.out"
+  local KILLED
+  KILLED="$(tail -n 1 "$WF/log/$RUN_ID/1_slow_${STEP_JOB}_4294967294.out")"
+  [[ "$KILLED" =~ ^swf:\ SIGTERM\ +[0-9.]+s\ +\?\ +\?\ +2\ +\?$ ]] || fail "killed time values: $KILLED"
   assert_eq 0 "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'swf-times.*' -newer "$MARKER" 2>/dev/null | wc -l)" 'times file removed'
 }
 
@@ -569,14 +571,19 @@ EOF
   start_workflow
   run_scheduler
   last_job_for_step 1_busy
-  local LOG="$WF/log/$RUN_ID/1_busy_${STEP_JOB}_4294967294.out" LAST
+  local LOG="$WF/log/$RUN_ID/1_busy_${STEP_JOB}_4294967294.out" HEAD LAST
+  HEAD="$(tail -n 2 "$LOG" | head -n 1)"
   LAST="$(tail -n 1 "$LOG")"
-  [[ "$LAST" =~ ^swf:\ payload\ exited\ 3\ after\ ([0-9]+)\.[0-9]{3}s\ elapsed,\ ([0-9]+)\.[0-9]{3}s\ user,\ [0-9]+\.[0-9]{3}s\ system\ \(2\ cpu\(s\),\ ([0-9]+)%\ used\)$ ]] \
-    || fail "unexpected time line: $LAST"
-  (( BASH_REMATCH[1] >= 0 && BASH_REMATCH[1] <= 2 )) || fail "elapsed out of range: $LAST"
+  [[ "$LAST" =~ ^swf:\ 3\ +([0-9]+)\.[0-9]{3}s\ +([0-9]+)\.([0-9]{3})s\ +[0-9]+\.[0-9]{3}s\ +2\ +[0-9]+%$ ]] \
+    || fail "unexpected time values: $LAST"
+  (( BASH_REMATCH[1] <= 2 )) || fail "elapsed out of range: $LAST"
   # A busy loop of up to 2 s burns user time: at least 0.3 s of it.
-  [[ "$LAST" =~ elapsed,\ ([0-9]+)\.([0-9]{3})s\ user ]]
-  (( 10#${BASH_REMATCH[1]}${BASH_REMATCH[2]} >= 300 )) || fail "user time too low: $LAST"
+  (( 10#${BASH_REMATCH[2]}${BASH_REMATCH[3]} >= 300 )) || fail "user time too low: $LAST"
+  local COL NAME
+  for NAME in elapsed user system cpus used; do
+    COL="${HEAD%%" $NAME"*}"
+    [[ "${LAST:${#COL}:1}" == ' ' && "${LAST:${#COL}+1:1}" != ' ' ]] || fail "column $NAME misaligned:\n$HEAD\n$LAST"
+  done
   assert_grep 'reason=step_failed:1_busy' "$WF/swf.d/run/$RUN_ID/history"
 }
 
@@ -726,10 +733,11 @@ EOF
   assert_eq "$LOGS/1_map_${MAP_JOBS[4]}_1.out" "$(must_capture "$WF/swf" log -s map -e 5)" 'element 5'
   local ELEMENT_LOG
   mapfile -t ELEMENT_LOG < "$("$WF/swf" log -s map -e 5)"
-  assert_eq 3 "${#ELEMENT_LOG[@]}" 'element 5 log: node line, payload, time line'
+  assert_eq 4 "${#ELEMENT_LOG[@]}" 'element 5 log: node line, payload, time table'
   assert_eq "swf: job ${MAP_JOBS[4]}_1 on node fake-node with 2 cpu(s)" "${ELEMENT_LOG[0]}" 'node line'
   assert_eq 'pos=4' "${ELEMENT_LOG[1]}" 'payload output'
-  assert_contains "${ELEMENT_LOG[2]}" 'swf: payload exited 0 after ' 'time line'
+  [[ "${ELEMENT_LOG[2]}" =~ ^swf:\ exit\ +elapsed\ +user\ +system\ +cpus\ +used$ ]] || fail "time header: ${ELEMENT_LOG[2]}"
+  [[ "${ELEMENT_LOG[3]}" =~ ^swf:\ 0\ + ]] || fail "time values: ${ELEMENT_LOG[3]}"
   assert_eq "$LOGS/1_map_${MAP_JOBS[5]}_0.out" "$(must_capture "$WF/swf" log --step map --element 7)" 'element 7'
   assert_eq "$LOGS/1_map_${MAP_JOBS[3]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 0)" 'element 3'
   assert_eq "$LOGS/1_map_${MAP_JOBS[0]}_2.out" "$(must_capture "$WF/swf" log -s map -e 3 -b 1)" 'element 3, previous execution'

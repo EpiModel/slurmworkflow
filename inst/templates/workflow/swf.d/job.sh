@@ -61,9 +61,8 @@ function swf_on_signal {
   fi
   printf 'swf: job %s received SIG%s; payload stopped\n' "$SWF__FAILED_ID" "$name" >&2
   if [[ -n "$SWF__START_MS" ]]; then
-    # The payload is not reaped yet, so its CPU time is unknown.
-    printf 'swf: payload killed by SIG%s after %s elapsed (cpu time unknown)\n' \
-      "$name" "$(swf_duration $(( $(swf_now_ms) - SWF__START_MS )))" >&2
+    # The payload is not reaped yet: its CPU time is unknown.
+    swf_time_table "SIG$name" "$(swf_duration $(( $(swf_now_ms) - SWF__START_MS )))" '?' '?' '?'
   fi
   [[ -z "$SWF__TIMES_FILE" ]] || rm -f "$SWF__TIMES_FILE"
   swf_fail $((128 + number))
@@ -118,25 +117,45 @@ function swf_child_times {
   SWF__CHILD_SYS="$(swf_times_ms "${line##* }")"
 }
 
+# Two log lines, a header and the values, each column as wide as its widest
+# cell:
+#   swf: exit  elapsed   user      system  cpus  used
+#   swf: 0     1h00m12s  7h55m40s  0m30s   8     99%
+function swf_time_table {
+  local -a head=(exit elapsed user system cpus used)
+  local -a vals=("$1" "$2" "$3" "$4" "$SWF__CPUS" "$5")
+  local i width line1='swf:' line2='swf:'
+  for i in "${!head[@]}"; do
+    width=${#head[i]}
+    (( ${#vals[i]} <= width )) || width=${#vals[i]}
+    if (( i < ${#head[@]} - 1 )); then
+      line1+="$(printf ' %-*s ' "$width" "${head[i]}")"
+      line2+="$(printf ' %-*s ' "$width" "${vals[i]}")"
+    else
+      line1+=" ${head[i]}"
+      line2+=" ${vals[i]}"
+    fi
+  done
+  printf '%s\n%s\n' "$line1" "$line2" >&2
+}
+
+# Like R's system.time: elapsed, then the user and system CPU time of the
+# reaped children (the payload and what it waited for), summed over processes.
 function swf_report_time {
-  local status="$1" elapsed user='' sys='' usage=''
+  local status="$1" elapsed user='?' sys='?' used='?'
   elapsed=$(( $(swf_now_ms) - SWF__START_MS ))
   swf_child_times
+  rm -f "$SWF__TIMES_FILE"
   if [[ -n "$SWF__CHILD_USER" && -n "$SWF__CHILD_SYS" && -n "$SWF__BASE_USER" && -n "$SWF__BASE_SYS" ]]; then
     user=$(( SWF__CHILD_USER - SWF__BASE_USER ))
     sys=$(( SWF__CHILD_SYS - SWF__BASE_SYS ))
+    if [[ "$SWF__CPUS" =~ ^[1-9][0-9]*$ ]] && (( elapsed > 0 )); then
+      used="$(( (user + sys) * 100 / (elapsed * SWF__CPUS) ))%"
+    fi
+    user="$(swf_duration "$user")"
+    sys="$(swf_duration "$sys")"
   fi
-  rm -f "$SWF__TIMES_FILE"
-  if [[ -z "$user" || -z "$sys" ]]; then
-    printf 'swf: payload exited %s after %s elapsed\n' "$status" "$(swf_duration "$elapsed")" >&2
-    return 0
-  fi
-  if [[ "$SWF__CPUS" =~ ^[1-9][0-9]*$ ]] && (( elapsed > 0 )); then
-    usage=", $(( (user + sys) * 100 / (elapsed * SWF__CPUS) ))% used"
-  fi
-  printf 'swf: payload exited %s after %s elapsed, %s user, %s system (%s cpu(s)%s)\n' \
-    "$status" "$(swf_duration "$elapsed")" "$(swf_duration "$user")" \
-    "$(swf_duration "$sys")" "$SWF__CPUS" "$usage" >&2
+  swf_time_table "$status" "$(swf_duration "$elapsed")" "$user" "$sys" "$used"
 }
 
 SWF__START_MS=''
